@@ -20,95 +20,108 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path"
 	"syscall"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+
 	"github.com/golang/glog"
-	"github.com/yard-turkey/lib-bucket-provisioner/controller"
+	v1alpha1 "github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	provisioner "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
 )
 
 const (
-	provisionerName = "example.com/hostpath"
+	provisionerName = "aws-s3.io/bucket"
+	awsKey = "AWS_ACCESS_KEY_ID"
+	awsSecret = "AWS_SECRET_ACCESS_KEY"
 )
 
-type hostPathProvisioner struct {
+type awss3Provisioner struct {
 	// The directory to create PV-backing directories in
-	pvDir string
-
-	// Identity of this hostPathProvisioner, set to node's name. Used to identify
-	// "this" provisioner's PVs.
-	identity string
+	endpointUrl string
+	bucketName  string
+	accessKey   string
+	secretKey   string
 }
 
-// NewHostPathProvisioner creates a new hostpath provisioner
-func NewHostPathProvisioner() controller.Provisioner {
-	nodeName := os.Getenv("NODE_NAME")
-	if nodeName == "" {
-		glog.Fatal("env variable NODE_NAME must be set so that this provisioner can identify itself")
+// NewAwsS3Provisioner creates a new aws s3 provisioner
+func NewAwsS3Provisioner() provisioner.Provisioner {
+	bname := os.Getenv("BUCKET_NAME")
+	glog.Infof("% is our bucket", bname)
+	user := os.Getenv(awsKey)
+	glog.Infof("% is our user", user)
+	pword := os.Getenv(awsSecret)
+	glog.Infof("% is our pword", pword)
+
+
+	//how do I fill these in?
+	return &awss3Provisioner{
+		endpointUrl:   "some.url.here",
+		bucketName:    bname,
+		accessKey:     user,
+		secretKey:     pword,
 	}
-	return &hostPathProvisioner{
-		pvDir:    "/tmp/hostpath-provisioner",
-		identity: nodeName,
-	}
+
 }
 
-var _ controller.Provisioner = &hostPathProvisioner{}
+var _ provisioner.Provisioner = &awss3Provisioner{}
 
 // Provision creates a storage asset and returns a PV object representing it.
-func (p *hostPathProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
-	path := path.Join(p.pvDir, options.PVName)
+func (p *awss3Provisioner)Provision(options *provisioner.BucketOptions) (*v1alpha1.ObjectBucket, *provisioner.S3AccessKeys, error) {
 
-	if err := os.MkdirAll(path, 0777); err != nil {
-		return nil, err
+	//sess := session.Must(session.NewSession())
+	//svc := s3.New(sess)
+
+	// Create a S3 client instance from a session
+	// - is aws.Config just a default config is that passed in from the library?
+	// - where do I get the bucket input - I'm guessing that is passed in from BucketOptions from the lib
+
+	sess, _ := session.NewSession(&aws.Config{
+		Region: aws.String("us-west-1")},
+	)
+	svc := s3.New(sess)
+
+	// where do I get the name from?
+	bucketinput := &s3.CreateBucketInput{
+		Bucket: aws.String(options.BucketName),
 	}
 
-	pv := &v1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: options.PVName,
-			Annotations: map[string]string{
-				"hostPathProvisionerIdentity": p.identity,
-			},
-		},
-		Spec: v1.PersistentVolumeSpec{
-			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
-			AccessModes:                   options.PVC.Spec.AccessModes,
-			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
-			},
-			PersistentVolumeSource: v1.PersistentVolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: path,
-				},
-			},
-		},
+	_, err := svc.CreateBucket(bucketinput)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case s3.ErrCodeBucketAlreadyExists:
+				return nil, nil, fmt.Errorf("Bucket %s already exists", p.bucketName)
+			case s3.ErrCodeBucketAlreadyOwnedByYou:
+				return nil, nil, fmt.Errorf("Bucket %s already owned by you", p.bucketName)
+			default:
+				return nil, nil, fmt.Errorf("Bucket %s could not be created - %v", p.bucketName, err.Error())
+			}
+		} else {
+			return nil, nil, fmt.Errorf("Bucket %s could not be created - %v", p.bucketName, err.Error())
+		}
+		return nil, nil, fmt.Errorf("Bucket %s could not be created - %v", p.bucketName, err.Error())
 	}
 
-	return pv, nil
+	return nil, nil, nil
+
 }
 
-// Delete removes the storage asset that was created by Provision represented
-// by the given PV.
-func (p *hostPathProvisioner) Delete(volume *v1.PersistentVolume) error {
-	ann, ok := volume.Annotations["hostPathProvisionerIdentity"]
-	if !ok {
-		return errors.New("identity annotation not found on PV")
-	}
-	if ann != p.identity {
-		return &controller.IgnoredError{Reason: "identity annotation on PV does not match ours"}
-	}
-
-	path := path.Join(p.pvDir, volume.Name)
-	if err := os.RemoveAll(path); err != nil {
-		return err
-	}
-
+// Delete OBC??
+func (p *awss3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
+	//TODO
 	return nil
 }
 
@@ -129,19 +142,13 @@ func main() {
 		glog.Fatalf("Failed to create client: %v", err)
 	}
 
-	// The controller needs to know what the server version is because out-of-tree
-	// provisioners aren't officially supported until 1.5
-	serverVersion, err := clientset.Discovery().ServerVersion()
-	if err != nil {
-		glog.Fatalf("Error getting server version: %v", err)
-	}
 
 	// Create the provisioner: it implements the Provisioner interface expected by
-	// the controller
-	hostPathProvisioner := NewHostPathProvisioner()
+	// the lib
+	awss3Provisioner := NewAwsS3Provisioner()
 
-	// Start the provision controller which will dynamically provision hostPath
-	// PVs
-	pc := controller.NewProvisionController(clientset, provisionerName, hostPathProvisioner, serverVersion.GitVersion)
-	pc.Run(wait.NeverStop)
+	//// Start the provision controller which will dynamically provision hostPath
+	//// PVs
+	// pc := controller.NewProvisionController(clientset, provisionerName, hostPathProvisioner, serverVersion.GitVersion)
+	//pc.Run(wait.NeverStop)
 }
