@@ -29,6 +29,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	awsuser "github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 
 	"github.com/golang/glog"
 	v1alpha1 "github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
@@ -40,6 +42,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/crossplane/pkg/controller/storage/bucket"
 )
 
 const (
@@ -93,7 +96,26 @@ func (p *awss3Provisioner)Provision(options *provisioner.BucketOptions) (*v1alph
 	)
 	svc := s3.New(sess)
 
-	// where do I get the name from?
+	//Create an iam user to pass back as bucket creds???
+	myuser := "needtogeneratename"
+
+	iamsvc := awsuser.New(sess)
+	result, uerr := iamsvc.CreateUser(&awsuser.CreateUserInput{
+		UserName: &myuser,
+	})
+	if uerr != nil {
+		//print error message
+	}
+	// print out successful result??
+	glog.Infof("Successfully created iam user %v", result)
+
+
+	// Set access keys into a secret for local access creds to s3 bucket
+	secret := connectionSecret(bucket, accessKeys)
+	secret.OwnerReferences = append(secret.OwnerReferences, bucket.OwnerReference())
+	bucket.Status.ConnectionSecretRef = corev1.LocalObjectReference{Name: secret.Name}
+
+	// where do I get the name from? How do I add in the bucket user to this?
 	bucketinput := &s3.CreateBucketInput{
 		Bucket: aws.String(options.BucketName),
 	}
@@ -124,6 +146,25 @@ func (p *awss3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	//TODO
 	return nil
 }
+
+//TODO figure out authentication
+// bucketAuthentication - align with what Jon expects to be returned - this is based off crossplane secret right now
+func bucketAuthentication(bucket *bucketv1alpha1.S3Bucket, accessKey *iam.AccessKey) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            bucket.ConnectionSecretName(),
+			Namespace:       bucket.Namespace,
+			OwnerReferences: []metav1.OwnerReference{bucket.OwnerReference()},
+		},
+
+		Data: map[string][]byte{
+			corev1alpha1.ResourceCredentialsSecretUserKey:     []byte(util.StringValue(accessKey.AccessKeyId)),
+			corev1alpha1.ResourceCredentialsSecretPasswordKey: []byte(util.StringValue(accessKey.SecretAccessKey)),
+			corev1alpha1.ResourceCredentialsSecretEndpointKey: []byte(bucket.Endpoint()),
+		},
+	}
+}
+
 
 func main() {
 	syscall.Umask(0)
