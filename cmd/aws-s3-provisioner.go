@@ -26,6 +26,7 @@ import (
 	"syscall"
 
 	"github.com/aws/aws-sdk-go/aws"
+	s3client "github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -33,8 +34,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 
 	"github.com/golang/glog"
-	v1alpha1 "github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	provisioner "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,47 +43,52 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/crossplane/pkg/controller/storage/bucket"
+	//"github.com/crossplane/pkg/controller/storage/bucket"
 )
 
 const (
-	provisionerName = "aws-s3.io/bucket"
-	awsKey = "AWS_ACCESS_KEY_ID"
-	awsSecret = "AWS_SECRET_ACCESS_KEY"
+	provisionerName	 = "aws-s3.io/bucket"
+	awsAccessKeyName = "AWS_ACCESS_KEY_ID"
+	awsSecretKeyName = "AWS_SECRET_ACCESS_KEY"
 )
 
-type awss3Provisioner struct {
-	// The directory to create PV-backing directories in
-	endpointUrl string
+type awsS3Provisioner struct {
+	host	    string
 	bucketName  string
 	accessKey   string
 	secretKey   string
+	client	    s3Client.Client
+	service	    *s3.S3
+}
+
+s3 := s3client.New(cfg, info, handlers, options...)
+s3Provisioner := awsS3Provisioner{
+	client: s3,
+	service: svc,
 }
 
 // NewAwsS3Provisioner creates a new aws s3 provisioner
-func NewAwsS3Provisioner() provisioner.Provisioner {
-	bname := os.Getenv("BUCKET_NAME")
-	glog.Infof("% is our bucket", bname)
-	user := os.Getenv(awsKey)
-	glog.Infof("% is our user", user)
-	pword := os.Getenv(awsSecret)
-	glog.Infof("% is our pword", pword)
+func NewAwsS3Provisioner(cfg aws.Config, s3Provisioner *awsS3Provisioner, ...) *provisioner.provisionerController {
 
+	sess, _ := session.NewSession(&aws.Config{
+		Region: aws.String("us-west-1")},
+	)
+	s3Provisioner.service = s3.New(sess)
 
-	//how do I fill these in?
-	return &awss3Provisioner{
-		endpointUrl:   "some.url.here",
-		bucketName:    bname,
-		accessKey:     user,
-		secretKey:     pword,
-	}
+		//endpointUrl:   "some.url.here",
+		//bucketName:    bname,
+		//accessKey:     user,
+		//secretKey:     pword,
 
+	opts := &provisioner.ProvisionerOptions{}
+
+	return provisioner.NewProvisioner(cfg, provisionerName, kubeVersion, opts)
 }
 
-var _ provisioner.Provisioner = &awss3Provisioner{}
+var _ provisioner.Provisioner = &awsS3Provisioner{}
 
 // Provision creates a storage asset and returns a PV object representing it.
-func (p *awss3Provisioner)Provision(options *provisioner.BucketOptions) (*v1alpha1.ObjectBucket, *provisioner.S3AccessKeys, error) {
+func (p *awsS3Provisioner) Provision(options *provisioner.BucketOptions) (*v1alpha1.ObjectBucket, *provisioner.S3AccessKeys, error) {
 
 	//sess := session.Must(session.NewSession())
 	//svc := s3.New(sess)
@@ -91,10 +97,6 @@ func (p *awss3Provisioner)Provision(options *provisioner.BucketOptions) (*v1alph
 	// - is aws.Config just a default config is that passed in from the library?
 	// - where do I get the bucket input - I'm guessing that is passed in from BucketOptions from the lib
 
-	sess, _ := session.NewSession(&aws.Config{
-		Region: aws.String("us-west-1")},
-	)
-	svc := s3.New(sess)
 
 	//Create an iam user to pass back as bucket creds???
 	myuser := "needtogeneratename"
