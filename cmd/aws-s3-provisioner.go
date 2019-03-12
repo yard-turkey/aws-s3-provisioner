@@ -18,28 +18,25 @@ limitations under the License.
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"path"
 	"syscall"
 
 	"github.com/aws/aws-sdk-go/aws"
-	s3client "github.com/aws/aws-sdk-go/aws/client"
+	// s3client "github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	// "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	awsuser "github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go-v2/service/iam"
+	// "github.com/aws/aws-sdk-go-v2/service/iam"
 
 	"github.com/golang/glog"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	libapi "github.com/yard-turkey/lib-bucket-provisioner/pkg/api"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
 
-	"k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -50,54 +47,26 @@ const (
 	provisionerName	 = "aws-s3.io/bucket"
 	awsAccessKeyName = "AWS_ACCESS_KEY_ID"
 	awsSecretKeyName = "AWS_SECRET_ACCESS_KEY"
+	s3Host = "s3"
+	s3Domain = ".amazonaws.com"
 )
 
 type awsS3Provisioner struct {
-	host	    string
 	bucketName  string
-	accessKey   string
-	secretKey   string
-	client	    s3Client.Client
 	service	    *s3.S3
+	clientset   *kubernetes.Clientset
 }
 
-s3 := s3client.New(cfg, info, handlers, options...)
-s3Provisioner := awsS3Provisioner{
-	client: s3,
-	service: svc,
+func NewAwsS3Provisioner(cfg rest.Config, s3Provisioner awsS3Provisioner) *libapi.ProvisionerController {
+
+	opts := &libapi.ProvisionerOptions{}
+
+	return libapi.NewProvisioner(&cfg, provisionerName, s3Provisioner, opts)
 }
 
-// NewAwsS3Provisioner creates a new aws s3 provisioner
-func NewAwsS3Provisioner(cfg aws.Config, s3Provisioner *awsS3Provisioner, ...) *provisioner.provisionerController {
+//var _ provisioner.Provisioner = &awsS3Provisioner{}
 
-	sess, _ := session.NewSession(&aws.Config{
-		Region: aws.String("us-west-1")},
-	)
-	s3Provisioner.service = s3.New(sess)
-
-		//endpointUrl:   "some.url.here",
-		//bucketName:    bname,
-		//accessKey:     user,
-		//secretKey:     pword,
-
-	opts := &provisioner.ProvisionerOptions{}
-
-	return provisioner.NewProvisioner(cfg, provisionerName, kubeVersion, opts)
-}
-
-var _ provisioner.Provisioner = &awsS3Provisioner{}
-
-// Provision creates a storage asset and returns a PV object representing it.
-func (p *awsS3Provisioner) Provision(options *provisioner.BucketOptions) (*v1alpha1.ObjectBucket, *provisioner.S3AccessKeys, error) {
-
-	//sess := session.Must(session.NewSession())
-	//svc := s3.New(sess)
-
-	// Create a S3 client instance from a session
-	// - is aws.Config just a default config is that passed in from the library?
-	// - where do I get the bucket input - I'm guessing that is passed in from BucketOptions from the lib
-
-
+func createIAM(sess *session.Session) (string, string, error){
 	//Create an iam user to pass back as bucket creds???
 	myuser := "needtogeneratename"
 
@@ -106,20 +75,36 @@ func (p *awsS3Provisioner) Provision(options *provisioner.BucketOptions) (*v1alp
 		UserName: &myuser,
 	})
 	if uerr != nil {
-		//print error message
+	  //print error message
 	}
 	// print out successful result??
 	glog.Infof("Successfully created iam user %v", result)
 
+	//Get the iam user access_key and also the secret key
+	//don't know enough about this yet
 
-	// Set access keys into a secret for local access creds to s3 bucket
-	secret := connectionSecret(bucket, accessKeys)
-	secret.OwnerReferences = append(secret.OwnerReferences, bucket.OwnerReference())
-	bucket.Status.ConnectionSecretRef = corev1.LocalObjectReference{Name: secret.Name}
+	return "", "", nil
+}
 
+// Provision creates a storage asset and returns a PV object representing it.
+func (p awsS3Provisioner) Provision(options *provisioner.BucketOptions) (*v1alpha1.Connection, error) {
+
+	// Create a new session and service for aws.Config
+	//sess := session.Must(session.NewSession())
+	//svc := s3.New(sess)
+	sess, _ := session.NewSession(&aws.Config{
+		Region: aws.String("us-west-1")},
+		// Credentials: credentials.NewStaticCredentials(os.Getenv)
+	)
+	svc := s3.New(sess)
+
+	//TODO - maybe use private bucket creds in future
+	//bucketAccessId, bucketSecretKey, err := createIAM(sess)
+
+	//Create our Bucket
 	// where do I get the name from? How do I add in the bucket user to this?
 	bucketinput := &s3.CreateBucketInput{
-		Bucket: aws.String(options.BucketName),
+		Bucket: &options.BucketName,
 	}
 
 	_, err := svc.CreateBucket(bucketinput)
@@ -127,46 +112,42 @@ func (p *awsS3Provisioner) Provision(options *provisioner.BucketOptions) (*v1alp
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case s3.ErrCodeBucketAlreadyExists:
-				return nil, nil, fmt.Errorf("Bucket %s already exists", p.bucketName)
+				return nil, fmt.Errorf("Bucket %s already exists", p.bucketName)
 			case s3.ErrCodeBucketAlreadyOwnedByYou:
-				return nil, nil, fmt.Errorf("Bucket %s already owned by you", p.bucketName)
+				return nil, fmt.Errorf("Bucket %s already owned by you", p.bucketName)
 			default:
-				return nil, nil, fmt.Errorf("Bucket %s could not be created - %v", p.bucketName, err.Error())
+				return nil, fmt.Errorf("Bucket %s could not be created - %v", p.bucketName, err.Error())
 			}
 		} else {
-			return nil, nil, fmt.Errorf("Bucket %s could not be created - %v", p.bucketName, err.Error())
+			return nil, fmt.Errorf("Bucket %s could not be created - %v", p.bucketName, err.Error())
 		}
-		return nil, nil, fmt.Errorf("Bucket %s could not be created - %v", p.bucketName, err.Error())
+		return nil, fmt.Errorf("Bucket %s could not be created - %v", p.bucketName, err.Error())
 	}
 
-	return nil, nil, nil
+	//build our connectionInfo
+	connectionInfo := &v1alpha1.Connection{
+		&v1alpha1.Endpoint{
+			BucketHost: s3Host,
+			BucketPort: 443,
+			BucketName: options.BucketName,
+			Region:     "us-west-1",
+		},
+		&v1alpha1.Authentication{
+			&v1alpha1.AccessKeys{
+				AccessKeyId:     os.Getenv(v1alpha1.AwsKeyField),
+				SecretAccessKey: os.Getenv(v1alpha1.AwsSecretField),
+			},
+		},
+	}
+	return connectionInfo, nil
 
 }
 
 // Delete OBC??
-func (p *awss3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
+func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	//TODO
 	return nil
 }
-
-//TODO figure out authentication
-// bucketAuthentication - align with what Jon expects to be returned - this is based off crossplane secret right now
-func bucketAuthentication(bucket *bucketv1alpha1.S3Bucket, accessKey *iam.AccessKey) *corev1.Secret {
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            bucket.ConnectionSecretName(),
-			Namespace:       bucket.Namespace,
-			OwnerReferences: []metav1.OwnerReference{bucket.OwnerReference()},
-		},
-
-		Data: map[string][]byte{
-			corev1alpha1.ResourceCredentialsSecretUserKey:     []byte(util.StringValue(accessKey.AccessKeyId)),
-			corev1alpha1.ResourceCredentialsSecretPasswordKey: []byte(util.StringValue(accessKey.SecretAccessKey)),
-			corev1alpha1.ResourceCredentialsSecretEndpointKey: []byte(bucket.Endpoint()),
-		},
-	}
-}
-
 
 func main() {
 	syscall.Umask(0)
@@ -185,11 +166,16 @@ func main() {
 		glog.Fatalf("Failed to create client: %v", err)
 	}
 
+	s3Prov := awsS3Provisioner{}
+	s3Prov.clientset = clientset
+
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the lib
-	awss3Provisioner := NewAwsS3Provisioner()
+	S3ProvisionerController := NewAwsS3Provisioner(*config, s3Prov)
+	S3ProvisionerController.Run()
 
+	//S3ProvisionerController := provisioner.Provisioner(NewAwsS3Provisioner(*config, awsS3Provisioner))
 	//// Start the provision controller which will dynamically provision hostPath
 	//// PVs
 	// pc := controller.NewProvisionController(clientset, provisionerName, hostPathProvisioner, serverVersion.GitVersion)
