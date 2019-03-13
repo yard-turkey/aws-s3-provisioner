@@ -66,24 +66,43 @@ func NewAwsS3Provisioner(cfg rest.Config, s3Provisioner awsS3Provisioner) *libap
 
 //var _ provisioner.Provisioner = &awsS3Provisioner{}
 
+// return value of string pointer or ""
+func StringValue(v *string) string {
+	if v != nil {
+		return *v
+	}
+	return ""
+}
+
 func createIAM(sess *session.Session) (string, string, error){
 	//Create an iam user to pass back as bucket creds???
 	myuser := "needtogeneratename"
 
 	iamsvc := awsuser.New(sess)
-	result, uerr := iamsvc.CreateUser(&awsuser.CreateUserInput{
+	uresult, uerr := iamsvc.CreateUser(&awsuser.CreateUserInput{
 		UserName: &myuser,
 	})
 	if uerr != nil {
 	  //print error message
 	}
 	// print out successful result??
-	glog.Infof("Successfully created iam user %v", result)
+	glog.Infof("Successfully created iam user %v", uresult)
 
-	//Get the iam user access_key and also the secret key
-	//don't know enough about this yet
+	aresult, aerr := iamsvc.CreateAccessKey(&awsuser.CreateAccessKeyInput{
+		UserName: &myuser,
+	})
+	if aerr != nil {
+		//print error message
+	}
+	// print out successful result??
+	glog.Infof("Successfully created iam user %v", aresult)
+	myaccesskey := StringValue(aresult.AccessKey.AccessKeyId)
+	glog.Infof("accessKey = %s", myaccesskey)
+	mysecretaccesskey := StringValue(aresult.AccessKey.SecretAccessKey)
+	glog.Infof("accessKey = %s", mysecretaccesskey)
 
-	return "", "", nil
+	return myaccesskey, mysecretaccesskey, nil
+
 }
 
 // Provision creates a storage asset and returns a PV object representing it.
