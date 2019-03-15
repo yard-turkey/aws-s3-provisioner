@@ -33,8 +33,8 @@ import (
 	// "github.com/aws/aws-sdk-go-v2/service/iam"
 
 	"github.com/golang/glog"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	libapi "github.com/yard-turkey/lib-bucket-provisioner/pkg/api"
+	bktV1 "github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	types "github.com/yard-turkey/lib-bucket-provisioner/pkg/api"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
 
 	"k8s.io/client-go/kubernetes"
@@ -45,8 +45,8 @@ import (
 
 const (
 	provisionerName	 = "aws-s3.io/bucket"
-	awsAccessKeyName = "AWS_ACCESS_KEY_ID"
-	awsSecretKeyName = "AWS_SECRET_ACCESS_KEY"
+	awsAccessKeyName = bktV1.AwsKeyField
+	awsSecretKeyName = bktV1.AwsSecretField
 	s3Host = "s3"
 	s3Domain = ".amazonaws.com"
 )
@@ -57,11 +57,11 @@ type awsS3Provisioner struct {
 	clientset   *kubernetes.Clientset
 }
 
-func NewAwsS3Provisioner(cfg rest.Config, s3Provisioner awsS3Provisioner) *libapi.ProvisionerController {
+func NewAwsS3Provisioner(cfg rest.Config, s3Provisioner awsS3Provisioner) *types.ProvisionerController {
 
-	opts := &libapi.ProvisionerOptions{}
+	opts := &types.ProvisionerOptions{}
 
-	return libapi.NewProvisioner(&cfg, provisionerName, s3Provisioner, opts)
+	return types.NewProvisioner(&cfg, provisionerName, s3Provisioner, opts)
 }
 
 //var _ provisioner.Provisioner = &awsS3Provisioner{}
@@ -106,7 +106,7 @@ func createIAM(sess *session.Session) (string, string, error){
 }
 
 // Provision creates a storage asset and returns a PV object representing it.
-func (p awsS3Provisioner) Provision(options *provisioner.BucketOptions) (*v1alpha1.Connection, error) {
+func (p awsS3Provisioner) Provision(options *provisioner.BucketOptions) (*bktV1.Connection, error) {
 
 	// Create a new session and service for aws.Config
 	//sess := session.Must(session.NewSession())
@@ -144,17 +144,17 @@ func (p awsS3Provisioner) Provision(options *provisioner.BucketOptions) (*v1alph
 	}
 
 	//build our connectionInfo
-	connectionInfo := &v1alpha1.Connection{
-		&v1alpha1.Endpoint{
+	connectionInfo := &bktV1.Connection{
+		&bktV1.Endpoint{
 			BucketHost: s3Host,
 			BucketPort: 443,
 			BucketName: options.BucketName,
 			Region:     "us-west-1",
 		},
-		&v1alpha1.Authentication{
-			&v1alpha1.AccessKeys{
-				AccessKeyId:     os.Getenv(v1alpha1.AwsKeyField),
-				SecretAccessKey: os.Getenv(v1alpha1.AwsSecretField),
+		&bktV1.Authentication{
+			&bktV1.AccessKeys{
+				AccessKeyId:     os.Getenv(bktV1.AwsKeyField),
+				SecretAccessKey: os.Getenv(bktV1.AwsSecretField),
 			},
 		},
 	}
@@ -163,7 +163,7 @@ func (p awsS3Provisioner) Provision(options *provisioner.BucketOptions) (*v1alph
 }
 
 // Delete OBC??
-func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
+func (p awsS3Provisioner) Delete(ob *bktV1.ObjectBucket) error {
 	//TODO
 	return nil
 }
