@@ -169,6 +169,7 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 }
 
 func main() {
+	glog.Infof("AWS S3 Provisioner - main")
 	syscall.Umask(0)
 
 	flag.Parse()
