@@ -1,0 +1,23 @@
+# Logs and archives
+*.log
+*.tar.*
+*.zip
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# IDE config
+.idea*
+
+# binary for this repo
+bin/awss3provisioner

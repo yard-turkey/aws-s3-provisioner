@@ -34,8 +34,8 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	libapi "github.com/yard-turkey/lib-bucket-provisioner/pkg/api"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
+	libbkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner"
+	apibkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -45,8 +45,6 @@ import (
 
 const (
 	provisionerName	 = "aws-s3.io/bucket"
-	awsAccessKeyName = "AWS_ACCESS_KEY_ID"
-	awsSecretKeyName = "AWS_SECRET_ACCESS_KEY"
 	s3Host = "s3"
 	s3Domain = ".amazonaws.com"
 )
@@ -57,11 +55,11 @@ type awsS3Provisioner struct {
 	clientset   *kubernetes.Clientset
 }
 
-func NewAwsS3Provisioner(cfg rest.Config, s3Provisioner awsS3Provisioner) *libapi.ProvisionerController {
+func NewAwsS3Provisioner(cfg rest.Config, s3Provisioner awsS3Provisioner) *libbkt.ProvisionerController {
 
-	opts := &libapi.ProvisionerOptions{}
+	opts := &libbkt.ProvisionerOptions{}
 
-	return libapi.NewProvisioner(&cfg, provisionerName, s3Provisioner, opts)
+	return libbkt.NewProvisioner(&cfg, provisionerName, s3Provisioner, opts)
 }
 
 //var _ provisioner.Provisioner = &awsS3Provisioner{}
@@ -106,7 +104,7 @@ func createIAM(sess *session.Session) (string, string, error){
 }
 
 // Provision creates a storage asset and returns a PV object representing it.
-func (p awsS3Provisioner) Provision(options *provisioner.BucketOptions) (*v1alpha1.Connection, error) {
+func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Connection, error) {
 
 	// Create a new session and service for aws.Config
 	//sess := session.Must(session.NewSession())
