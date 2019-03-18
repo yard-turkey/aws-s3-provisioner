@@ -3,6 +3,7 @@ module github.com/yard-turkey/aws-s3-provisioner
 require (
 	github.com/appscode/jsonpatch v0.0.0-20190108182946-7c0e3b262f30 // indirect
 	github.com/aws/aws-sdk-go v1.18.2
+	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-logr/logr v0.1.0 // indirect
 	github.com/go-logr/zapr v0.1.1 // indirect
 	github.com/gogo/protobuf v1.2.1 // indirect
@@ -18,11 +19,14 @@ require (
 	github.com/json-iterator/go v1.1.6 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
+	github.com/onsi/ginkgo v1.8.0 // indirect
+	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/pborman/uuid v1.2.0 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
+	github.com/pkg/errors v0.8.1 // indirect
 	github.com/prometheus/client_golang v0.9.2 // indirect
 	github.com/spf13/pflag v1.0.3 // indirect
-	github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190313221124-8ed602caef10
+	github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190315212742-e2bca0bfe58b
 	go.uber.org/atomic v1.3.2 // indirect
 	go.uber.org/multierr v1.1.0 // indirect
 	go.uber.org/zap v1.9.1 // indirect
@@ -34,11 +38,12 @@ require (
 	gopkg.in/yaml.v2 v2.2.2 // indirect
 	//k8s.io/api v0.0.0-20190313115550-3c12c96769cc
 	k8s.io/api v0.0.0-20181213150558-05914d821849 // indirect
+	k8s.io/apiextensions-apiserver v0.0.0-20190314165226-5c9e5bbeace1 // indirect
 	k8s.io/apimachinery v0.0.0-20190313115320-c9defaaddf6f // indirect
 	k8s.io/client-go v0.0.0-20181213151034-8d9ed539ba31
 	k8s.io/klog v0.2.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20190306001800-15615b16d372 // indirect
-	sigs.k8s.io/controller-runtime v0.0.0-20190311173329-881047043d34 // indirect
-	//sigs.k8s.io/controller-runtime kubernetes-1.13.1
+	sigs.k8s.io/controller-runtime v0.1.10 // indirect
+	sigs.k8s.io/testing_frameworks v0.1.1 // indirect
 	sigs.k8s.io/yaml v1.1.0 // indirect
 )
