@@ -9,6 +9,7 @@
 *.dll
 *.so
 *.dylib
+bin
 
 # Test binary, build with `go test -c`
 *.test
@@ -18,6 +19,3 @@
 
 # IDE config
 .idea*
-
-# binary for this repo
-bin/awss3provisioner
