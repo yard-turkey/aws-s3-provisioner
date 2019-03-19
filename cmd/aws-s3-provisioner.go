@@ -45,6 +45,7 @@ import (
 
 	//"github.com/crossplane/pkg/controller/storage/bucket"
 	//"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 )
 
 const (
@@ -144,18 +145,73 @@ func (p awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim
 // Provision creates a storage asset and returns a PV object representing it.
 func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Connection, error) {
 
+	// create general session object
+	sess := &session.Session{}
+
+	//TODO: move to constants
+	// set some defaults
+	region := "us-west-1"
+	ns := "default"
+	secretName := "s3-bucket-owner"
+	accessId := ""
+	accessSecret := ""
+	glog.Infof("In Provision - default region is %s and default ns is %s", region, ns)
+
 	// Get the storageclass here so we can get credentials?
-	// how do we create our config with the credentials we want to use
-	// for the bucket creation?
-	// do we set some env vars and just have NewSession pick those up?
-	
+	sc, _ := p.getClassForBucketClaim(options.ObjectBucketClaim)
+
+	if sc != nil && sc.Parameters["secretName"] != "" {
+		glog.Infof("  StorageClass does exist in claim - %s", sc.Name)
+
+		//get our region, ns and secret stuff
+		if sc.Parameters["region"] != "" {
+			region = sc.Parameters["region"]
+		}
+		if sc.Parameters["secretNamespace"] != "" {
+			ns = sc.Parameters["secretNamespace"]
+		}
+		if sc.Parameters["secretName"] != "" {
+			secretName = sc.Parameters["secretName"]
+		}
+
+		//now get our secret ref
+		secretkeys, err := p.clientset.CoreV1().Secrets(ns).Get(secretName, metav1.GetOptions{})
+		if err != nil {
+			//log something
+		}
+		accessId := string(secretkeys.Data[v1alpha1.AwsKeyField])
+		accessSecret := string(secretkeys.Data[v1alpha1.AwsSecretField])
+		glog.Infof("Access Keys are empty - %s %s", accessId, accessSecret)
+
+		if len(accessId) > 0 || len(accessSecret) >0 {
+			// use our SC to create our session
+			sess, _ = session.NewSession(&aws.Config{
+				Region:      aws.String(region),
+				Credentials: credentials.NewStaticCredentials(accessId, accessSecret, "TOKEN"),
+			})
+		} else {
+			// fall back to default implementation
+			glog.Infof("  Could Not Find accessKey and Secret - %s", options.ObjectBucketClaim.Name)
+			sess, _ = session.NewSession(&aws.Config{
+				Region: aws.String(region)},
+			)
+		}
+	} else {
+		// this should follow normal AWS credential chain
+		// meaning it will look in default config for aws cli (aws configure)
+		// or it will look for env vars
+		glog.Infof("  No StorageClass in OBC - %s", options.ObjectBucketClaim.Name)
+		glog.Infof("  Access Keys are empty as expected - [%s] [%s]", accessId, accessSecret)
+		sess, _ = session.NewSession(&aws.Config{
+			Region: aws.String(region)},
+			// Credentials: credentials.NewStaticCredentials(os.Getenv)
+		)
+	}
+
 	// Create a new session and service for aws.Config
 	//sess := session.Must(session.NewSession())
 	//svc := s3.New(sess)
-	sess, _ := session.NewSession(&aws.Config{
-		Region: aws.String("us-west-1")},
-		// Credentials: credentials.NewStaticCredentials(os.Getenv)
-	)
+
 	svc := s3.New(sess)
 
 	//TODO - maybe use private bucket creds in future
@@ -192,7 +248,7 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 			BucketHost: s3Host,
 			BucketPort: 443,
 			BucketName: options.BucketName,
-			Region:     "us-west-1",
+			Region:     region,
 		},
 		&v1alpha1.Authentication{
 			&v1alpha1.AccessKeys{
