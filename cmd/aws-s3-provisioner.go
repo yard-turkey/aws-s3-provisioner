@@ -67,6 +67,7 @@ type awsS3Provisioner struct {
 
 func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) *libbkt.ProvisionerController {
 
+glog.Infof("\n***** in NewAwsS3Provisioner: s3Provisioner=%+v\n", s3Provisioner)
 	opts := &libbkt.ProvisionerOptions{}
 	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, opts)
 }
@@ -293,6 +294,19 @@ func handle_flags() {
 	})
 }
 
+// create k8s config and client for the runtime-controller. 
+// Note: panics on errors.
+func createConfigAndClientOrDie(masterurl, kubeconfig string) (*restclient.Config, *kubernetes.Clientset) {
+	config, err := clientcmd.BuildConfigFromFlags(masterurl, kubeconfig)
+	if err != nil {
+		glog.Fatalf("Failed to create config: %v", err)
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		glog.Fatalf("Failed to create client: %v", err)
+	}
+	return config, clientset
+}
 
 func main() {
 	syscall.Umask(0)
@@ -302,30 +316,14 @@ func main() {
 	glog.Infof("AWS S3 Provisioner - main")
 	glog.Infof("flags: kubeconfig=%q; masterURL=%q", kubeconfig, masterURL)
 
-	// Create an InClusterConfig and use it to create a client for the controller
-	// to use to communicate with Kubernetes
-	config, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
-	if err != nil {
-		glog.Fatalf("Failed to create config: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(config)
-
-	if err != nil {
-		glog.Fatalf("Failed to create client: %v", err)
-	}
+	config, clientset := createConfigAndClientOrDie(masterURL, kubeconfig)
 
 	s3Prov := awsS3Provisioner{}
 	s3Prov.clientset = clientset
 
-
-	// Create the provisioner: it implements the Provisioner interface expected by
-	// the lib
+	// Create and run the s3 provisioner controller.
+	// It implements the Provisioner interface expected by the bucket
+	// provisioning lib.
 	S3ProvisionerController := NewAwsS3Provisioner(config, s3Prov)
 	S3ProvisionerController.Run()
-
-	//S3ProvisionerController := provisioner.Provisioner(NewAwsS3Provisioner(*config, awsS3Provisioner))
-	//// Start the provision controller which will dynamically provision hostPath
-	//// PVs
-	// pc := controller.NewProvisionController(clientset, provisionerName, hostPathProvisioner, serverVersion.GitVersion)
-	//pc.Run(wait.NeverStop)
 }

@@ -9,7 +9,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
@@ -52,7 +51,7 @@ func NewProvisioner(
 	options *ProvisionerOptions,
 ) *ProvisionerController {
 
-	klog.Info("Constructing new provisioner: %s", provisionerName)
+	klog.Infof("Constructing new provisioner: %s", provisionerName)
 
 	var err error
 
@@ -67,6 +66,9 @@ func NewProvisioner(
 	//  For instance, if the actual bucket is deleted,
 	//  we may want to annotate this in the OB after some time
 	klog.V(util.DebugLogLvl).Infof("generating controller manager")
+
+	klog.Warning("THIS IS A TEST OF THE SCHEME REGISTRATION!!!!")
+
 	ctrl.Manager, err = manager.New(cfg, manager.Options{})
 	if err != nil {
 		klog.Fatalf("Error creating controller manager: %v", err)
@@ -76,7 +78,7 @@ func NewProvisioner(
 		klog.Fatalf("Error adding api resources to scheme")
 	}
 
-	rc, err := client.New(cfg, client.Options{})
+	rc := ctrl.Manager.GetClient()
 	if err != nil {
 		klog.Fatalf("Error generating new client: %v", err)
 	}
