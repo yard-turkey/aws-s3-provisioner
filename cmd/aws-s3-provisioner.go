@@ -67,7 +67,6 @@ type awsS3Provisioner struct {
 
 func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) *libbkt.ProvisionerController {
 
-glog.Infof("\n***** in NewAwsS3Provisioner: s3Provisioner=%+v\n", s3Provisioner)
 	opts := &libbkt.ProvisionerOptions{}
 	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, opts)
 }
