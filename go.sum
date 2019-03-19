@@ -81,6 +81,8 @@ github.com/stretchr/testify v1.2.2 h1:bSDNvY7ZPG5RlJ8otE/7V6gMiyenm9RtJ7IUVIAoJ1
 github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
 github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190315212742-e2bca0bfe58b h1:q3XWo0wLoXm+O+z4522SFSf2vIZt2wWew+Urtu3Rks8=
 github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190315212742-e2bca0bfe58b/go.mod h1:VrgW/40jXoKn98OWmofSduzCoZ3PsuzJMwaCOnkwWbM=
+github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190318204242-0377fb3aaf7b h1:Q6PgL8L8eOuwGYz4hubJgAeW/ultmtSk4C90UGAthC4=
+github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190318204242-0377fb3aaf7b/go.mod h1:VrgW/40jXoKn98OWmofSduzCoZ3PsuzJMwaCOnkwWbM=
 go.uber.org/atomic v1.3.2 h1:2Oa65PReHzfn29GpvgsYwloV9AVFHPDk8tYxt2c2tr4=
 go.uber.org/atomic v1.3.2/go.mod h1:gD2HeocX3+yG+ygLZcrzQJaqmWj9AIm7n08wl/qW/PE=
 go.uber.org/multierr v1.1.0 h1:HoEmRHQPVSqub6w2z2d2EOVs2fjyFRGyofhKuyDq0QI=
