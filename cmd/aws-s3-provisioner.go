@@ -38,7 +38,8 @@ import (
 	apibkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	restclient "k8s.io/client-go/rest"
 
 	//"github.com/crossplane/pkg/controller/storage/bucket"
 )
@@ -49,17 +50,21 @@ const (
 	s3Domain = ".amazonaws.com"
 )
 
+var (
+	kubeconfig string
+	masterURL  string
+)
+
 type awsS3Provisioner struct {
 	bucketName  string
 	service	    *s3.S3
 	clientset   *kubernetes.Clientset
 }
 
-func NewAwsS3Provisioner(cfg rest.Config, s3Provisioner awsS3Provisioner) *libbkt.ProvisionerController {
+func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) *libbkt.ProvisionerController {
 
 	opts := &libbkt.ProvisionerOptions{}
-
-	return libbkt.NewProvisioner(&cfg, provisionerName, s3Provisioner, opts)
+	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, opts)
 }
 
 //var _ provisioner.Provisioner = &awsS3Provisioner{}
@@ -166,16 +171,44 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	return nil
 }
 
-func main() {
-	glog.Infof("AWS S3 Provisioner - main")
-	syscall.Umask(0)
+// --kubeconfig and --master are set in the controller-runtime's config
+// package's init(). Set global kubeconfig and masterURL variables depending
+// on flag values or env variables. Also sets `alsologtostderr`.
+func handle_flags() {
 
 	flag.Parse()
 	flag.Set("logtostderr", "true")
 
+	flag.VisitAll(func(f *flag.Flag) {
+		if f.Name == "kubeconfig" {
+			kubeconfig = flag.Lookup(f.Name).Value.String()
+			if kubeconfig == "" {
+				kubeconfig = os.Getenv("KUBECONFIG")
+			}
+			return
+		}
+		if f.Name == "master" {
+			masterURL = flag.Lookup(f.Name).Value.String()
+			if masterURL == "" {
+				masterURL = os.Getenv("MASTER")
+			}
+			return
+		}
+	})
+}
+
+
+func main() {
+	syscall.Umask(0)
+
+	handle_flags()
+
+	glog.Infof("AWS S3 Provisioner - main")
+	glog.Infof("flags: kubeconfig=%q; masterURL=%q", kubeconfig, masterURL)
+
 	// Create an InClusterConfig and use it to create a client for the controller
 	// to use to communicate with Kubernetes
-	config, err := rest.InClusterConfig()
+	config, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {
 		glog.Fatalf("Failed to create config: %v", err)
 	}
@@ -190,7 +223,7 @@ func main() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the lib
-	S3ProvisionerController := NewAwsS3Provisioner(*config, s3Prov)
+	S3ProvisionerController := NewAwsS3Provisioner(config, s3Prov)
 	S3ProvisionerController.Run()
 
 	//S3ProvisionerController := provisioner.Provisioner(NewAwsS3Provisioner(*config, awsS3Provisioner))
