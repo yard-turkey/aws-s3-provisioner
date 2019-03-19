@@ -37,11 +37,14 @@ import (
 	libbkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner"
 	apibkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	restclient "k8s.io/client-go/rest"
+	storage "k8s.io/api/storage/v1"
 
 	//"github.com/crossplane/pkg/controller/storage/bucket"
+	//"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 )
 
 const (
@@ -108,9 +111,44 @@ func createIAM(sess *session.Session) (string, string, error){
 
 }
 
+//TODO don't really need this?
+func (p awsS3Provisioner)getObjectBucketClaimClass(obc *v1alpha1.ObjectBucketClaim) string {
+	return obc.Spec.StorageClassName
+}
+
+
+// GetClassForVolume locates storage class by persistent volume
+func (p awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim) (*storage.StorageClass, error) {
+	if p.clientset == nil {
+		return nil, fmt.Errorf("Cannot get kube client")
+	}
+	className := obc.Spec.StorageClassName
+	if className == "" {
+		// keep trying to find credentials or storageclass?
+		glog.Infof("OBC has no storageclass - should we now look at env?")
+	}
+
+	//not sure how to get the storage class
+	if className != "" {
+		class, err := p.clientset.StorageV1().StorageClasses().Get(className, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+
+		return class, nil
+	}
+
+	return nil, nil
+}
+
 // Provision creates a storage asset and returns a PV object representing it.
 func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Connection, error) {
 
+	// Get the storageclass here so we can get credentials?
+	// how do we create our config with the credentials we want to use
+	// for the bucket creation?
+	// do we set some env vars and just have NewSession pick those up?
+	
 	// Create a new session and service for aws.Config
 	//sess := session.Must(session.NewSession())
 	//svc := s3.New(sess)
@@ -122,6 +160,8 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 
 	//TODO - maybe use private bucket creds in future
 	//bucketAccessId, bucketSecretKey, err := createIAM(sess)
+
+
 
 	//Create our Bucket
 	// where do I get the name from? How do I add in the bucket user to this?
@@ -213,6 +253,7 @@ func main() {
 		glog.Fatalf("Failed to create config: %v", err)
 	}
 	clientset, err := kubernetes.NewForConfig(config)
+
 	if err != nil {
 		glog.Fatalf("Failed to create client: %v", err)
 	}
