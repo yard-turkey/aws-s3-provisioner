@@ -1,6 +1,8 @@
 package api
 
 import (
+	corev1 "k8s.io/api/core/v1"
+
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
@@ -17,7 +19,7 @@ type Provisioner interface {
 
 type BucketOptions struct {
 	// ReclaimPolicy is the reclaimPolicy of the OBC's storage class
-	ReclaimPolicy v1alpha1.ReclaimPolicy
+	ReclaimPolicy *corev1.PersistentVolumeReclaimPolicy
 	// ObjectBucketName is the name of the ObjectBucket API resource
 	ObjectBucketName string
 	// BucketName is the name of the bucket within the object store

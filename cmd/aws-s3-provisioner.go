@@ -322,11 +322,15 @@ func main() {
 
 // --kubeconfig and --master are set in the controller-runtime's config
 // package's init(). Set global kubeconfig and masterURL variables depending
-// on flag values or env variables. Also sets `alsologtostderr`.
+// on flag values or env variables. 
+// Note: `alsologtostderr` *must* be specified on the command line to see
+//   provisioner and bucketlibrary logging. Setting it here does not affect
+//   the lib because its init() function has already run.
 func handleFlags() {
 
-	flag.Parse()
-	flag.Set("logtostderr", "true")
+	if !flag.Parsed() {
+		flag.Parse()
+	}
 
 	flag.VisitAll(func(f *flag.Flag) {
 		if f.Name == "kubeconfig" {
