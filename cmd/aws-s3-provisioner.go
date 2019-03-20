@@ -128,7 +128,6 @@ func (p awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim
 	if className == "" {
 		// keep trying to find credentials or storageclass?
 		// Yes, w/ exponential backoff
-		glog.Infof("OBC has no storageclass - should we now look at env?")
 		return nil, fmt.Errorf("StorageClass missing in OBC %q", obc.Name)
 	}
 
@@ -142,6 +141,7 @@ func (p awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim
 
 func awsDefaultSession(region string) (*session.Session, error) {
 
+	glog.Infof("Creating AWS Default Session")
 	return session.NewSession(&aws.Config{
 			Region: aws.String(region),
 			//Credentials: credentials.NewStaticCredentials(os.Getenv),
@@ -167,6 +167,7 @@ func createBucket(svc *s3.S3, name, region string) (*v1alpha1.Connection, error)
 		return nil, fmt.Errorf("Bucket %q could not be created: %v", name, err)
 	}
 
+	glog.Infof("Bucket %s successfully created", name)
 	return  &v1alpha1.Connection{
 		&v1alpha1.Endpoint{
 			BucketHost: s3Host,
@@ -199,10 +200,9 @@ func getSecretName(parms map[string]string) (ns, name string) {
 
 // Get the secret and return its accessKeyId string and secretKey string.
 func credsFromSecret(c *kubernetes.Clientset, ns, name string) (string, string, error) {
-
 	secret, err := c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
-		return "", "", fmt.Errorf("unable to get Secret \"%s/%s\"", ns, name)
+		return "", "", fmt.Errorf("unable to get Secret \"%s/%s\" with error %v", ns, name, err)
 	}
 
 	return string(secret.Data[v1alpha1.AwsKeyField]), string(secret.Data[v1alpha1.AwsSecretField]), nil
@@ -247,17 +247,21 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 			if err != nil || len(accessId) == 0 || len(accessSecret) == 0 {
 				glog.Warningf("secret \"%s/%s\" in storage class %q for OBC %q is empty.\nUsing default credentials.", secretNS, secretName, sc.Name, options.ObjectBucketClaim.Name)
 				sess, err = awsDefaultSession(region)
+				if err != nil {
+					glog.Errorf("session not being created from awsDefaultSession %s %v", region, err)
+				}
+				if sess == nil {
+					glog.Warningf("session is nil")
+				}
 			} else {
 				// use the OBC's SC to create our session
+				glog.Infof("Creating session using static credentials from storageclass secret")
 				sess, err = session.NewSession(&aws.Config{
 					Region:      aws.String(region),
-					Credentials: credentials.NewStaticCredentials(accessId, accessSecret, "TOKEN"),
+					Credentials: credentials.NewStaticCredentials(accessId, accessSecret, ""),
 				})
 			}
 		}
-	}
-	if err != nil {
-		return nil, fmt.Errorf("could not create AWS session: %v", err)
 	}
 
 	// Create a new service for aws.Config
