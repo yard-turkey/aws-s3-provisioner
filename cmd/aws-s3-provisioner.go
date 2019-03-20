@@ -183,6 +183,32 @@ func createBucket(svc *s3.S3, name, region string) (*v1alpha1.Connection, error)
 	}, nil
 }
 
+// Get the secret namespace and name from the passed in map. 
+// Empty strings are also returned.
+func getSecretName(parms map[string]string) (ns, name string) {
+
+	const (
+		scSecretNameKey = "secretName"
+		scSecretNSKey   = "secretNamespace"
+	)
+
+	ns, _ = parms[scSecretNSKey]
+	name, _ = parms[scSecretNameKey]
+	return
+}
+
+// Get the secret and return its accessKeyId string and secretKey string.
+func credsFromSecret(c *kubernetes.Clientset, ns, name string) (string, string, error) {
+
+	secret, err := c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return "", "", fmt.Errorf("unable to get Secret \"%s/%s\"", ns, name)
+	}
+
+	return string(secret.Data[v1alpha1.AwsKeyField]), string(secret.Data[v1alpha1.AwsSecretField]), nil
+}
+
+
 // Provision creates an aws s3 bucket and returns a connection info representing
 // the bucket's endpoint and user access credentials.
 func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Connection, error) {
@@ -190,16 +216,8 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 	const (
 		defaultRegion   = "us-west-1"
 		scRegionKey     = "region"
-		scSecretNameKey = "secretName"
-		scSecretNSKey   = "secretNamespace"
 	)
-
-	var (
-		accessId     string
-		accessSecret string
-		ok	     bool
-		region	     string
-	)
+	var region string
 
 	// create general session object -- WHY Scott??
 	sess := &session.Session{}
@@ -214,33 +232,28 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 
 	} else {
 		// get expected sc parameters containing region and secret 
+		var ok bool
 		region, ok = sc.Parameters[scRegionKey]
 		if !ok || region == "" {
 			region = defaultRegion
 		}
-		secretNS, ok := sc.Parameters[scSecretNSKey]
-		secretName, ok1 := sc.Parameters[scSecretNameKey]
-		if !ok || !ok1 || secretNS == "" || secretName == "" {
+		secretNS, secretName := getSecretName(sc.Parameters)
+		if secretNS == "" || secretName == "" {
+			glog.Warningf("secret name or namespace are empty in storage class %q", sc.Name)
 			sess, err = awsDefaultSession(region)
-		}
-
-		// get the sc's bucket owner secret
-		secret, err := p.clientset.CoreV1().Secrets(secretNS).Get(secretName, metav1.GetOptions{})
-		if err != nil {
-			//log something
-		}
-		accessId = string(secret.Data[v1alpha1.AwsKeyField])
-		accessSecret = string(secret.Data[v1alpha1.AwsSecretField])
-
-		if len(accessId) > 0 && len(accessSecret) > 0 {
-			// use the OBC's SC to create our session
-			sess, err = session.NewSession(&aws.Config{
-				Region:      aws.String(region),
-				Credentials: credentials.NewStaticCredentials(accessId, accessSecret, "TOKEN"),
-			})
 		} else {
-			glog.Warningf("secret \"%s/%s\" in storage class %q for OBC %q is empty.\nUsing default credentials.", secret.Namespace, secret.Name, sc.Name, options.ObjectBucketClaim.Name)
-			sess, err = awsDefaultSession(region)
+			// get the sc's bucket owner secret
+			accessId, accessSecret, err := credsFromSecret(p.clientset, secretNS, secretName)
+			if err != nil || len(accessId) == 0 || len(accessSecret) == 0 {
+				glog.Warningf("secret \"%s/%s\" in storage class %q for OBC %q is empty.\nUsing default credentials.", secretNS, secretName, sc.Name, options.ObjectBucketClaim.Name)
+				sess, err = awsDefaultSession(region)
+			} else {
+				// use the OBC's SC to create our session
+				sess, err = session.NewSession(&aws.Config{
+					Region:      aws.String(region),
+					Credentials: credentials.NewStaticCredentials(accessId, accessSecret, "TOKEN"),
+				})
+			}
 		}
 	}
 	if err != nil {
@@ -262,10 +275,51 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	return nil
 }
 
+// create k8s config and client for the runtime-controller. 
+// Note: panics on errors.
+func createConfigAndClientOrDie(masterurl, kubeconfig string) (*restclient.Config, *kubernetes.Clientset) {
+	config, err := clientcmd.BuildConfigFromFlags(masterurl, kubeconfig)
+	if err != nil {
+		glog.Fatalf("Failed to create config: %v", err)
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		glog.Fatalf("Failed to create client: %v", err)
+	}
+	return config, clientset
+}
+
+func main() {
+	defer glog.Flush()
+	syscall.Umask(0)
+
+	handleFlags()
+
+	glog.Infof("AWS S3 Provisioner - main")
+	glog.Infof("flags: kubeconfig=%q; masterURL=%q", kubeconfig, masterURL)
+
+	config, clientset := createConfigAndClientOrDie(masterURL, kubeconfig)
+
+	stopCh := handleSignals()
+
+	s3Prov := awsS3Provisioner{}
+	s3Prov.clientset = clientset
+
+	// Create and run the s3 provisioner controller.
+	// It implements the Provisioner interface expected by the bucket
+	// provisioning lib.
+	S3ProvisionerController := NewAwsS3Provisioner(config, s3Prov)
+	glog.Infof("main: running %s provisioner...", provisionerName)
+	S3ProvisionerController.Run()
+
+	<-stopCh
+	glog.Infof("main: %s provisioner exited.", provisionerName)
+}
+
 // --kubeconfig and --master are set in the controller-runtime's config
 // package's init(). Set global kubeconfig and masterURL variables depending
 // on flag values or env variables. Also sets `alsologtostderr`.
-func handle_flags() {
+func handleFlags() {
 
 	flag.Parse()
 	flag.Set("logtostderr", "true")
@@ -288,20 +342,6 @@ func handle_flags() {
 	})
 }
 
-// create k8s config and client for the runtime-controller. 
-// Note: panics on errors.
-func createConfigAndClientOrDie(masterurl, kubeconfig string) (*restclient.Config, *kubernetes.Clientset) {
-	config, err := clientcmd.BuildConfigFromFlags(masterurl, kubeconfig)
-	if err != nil {
-		glog.Fatalf("Failed to create config: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		glog.Fatalf("Failed to create client: %v", err)
-	}
-	return config, clientset
-}
-
 // Shutdown gracefully on system signals.
 func handleSignals() <-chan struct{} {
 	sigCh := make(chan os.Signal)
@@ -313,31 +353,4 @@ func handleSignals() <-chan struct{} {
 		os.Exit(1)
 	}()
 	return stopCh
-}
-
-func main() {
-	defer glog.Flush()
-	syscall.Umask(0)
-
-	handle_flags()
-
-	glog.Infof("AWS S3 Provisioner - main")
-	glog.Infof("flags: kubeconfig=%q; masterURL=%q", kubeconfig, masterURL)
-
-	config, clientset := createConfigAndClientOrDie(masterURL, kubeconfig)
-
-	stopCh := handleSignals()
-
-	s3Prov := awsS3Provisioner{}
-	s3Prov.clientset = clientset
-
-	// Create and run the s3 provisioner controller.
-	// It implements the Provisioner interface expected by the bucket
-	// provisioning lib.
-	S3ProvisionerController := NewAwsS3Provisioner(config, s3Prov)
-	glog.Infof("main: running %s provisioner...", provisionerName)
-	S3ProvisionerController.Run()
-
-	<-stopCh
-	glog.Infof("main: %s provisioner exited.", provisionerName)
 }
