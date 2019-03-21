@@ -50,9 +50,10 @@ import (
 )
 
 const (
-	provisionerName	 = "aws-s3.io/bucket"
-	s3Host = "s3"
-	s3Domain = ".amazonaws.com"
+	defaultRegion	= "us-west-1"
+	provisionerName	= "aws-s3.io/bucket"
+	s3Host		= "s3"
+	s3Domain	= ".amazonaws.com"
 )
 
 var (
@@ -61,9 +62,15 @@ var (
 )
 
 type awsS3Provisioner struct {
-	bucketName  string
-	service	    *s3.S3
-	clientset   *kubernetes.Clientset
+	region	     string
+	// session is the aws session
+	session	     *session.Session
+	// service is the aws s3 service based on the session
+	service	     *s3.S3
+	clientset    *kubernetes.Clientset
+	// accessKeyId is the aws account id
+	accessKeyId  string
+	accessSecret string
 }
 
 func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) *libbkt.ProvisionerController {
@@ -71,8 +78,6 @@ func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner)
 	opts := &libbkt.ProvisionerOptions{}
 	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, opts)
 }
-
-//var _ provisioner.Provisioner = &awsS3Provisioner{}
 
 // return value of string pointer or ""
 func StringValue(v *string) string {
@@ -110,14 +115,7 @@ func createIAM(sess *session.Session) (string, string, error){
 	glog.Infof("accessKey = %s", mysecretaccesskey)
 
 	return myaccesskey, mysecretaccesskey, nil
-
 }
-
-//TODO don't really need this?
-func (p awsS3Provisioner)getObjectBucketClaimClass(obc *v1alpha1.ObjectBucketClaim) string {
-	return obc.Spec.StorageClassName
-}
-
 
 // GetClassForVolume locates storage class by persistent volume
 func (p awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim) (*storage.StorageClass, error) {
@@ -139,22 +137,23 @@ func (p awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim
 	return class, nil
 }
 
-func awsDefaultSession(region string) (*session.Session, error) {
+// Return the aws default session.
+func awsDefaultSession() (*session.Session, error) {
 
-	glog.Infof("Creating AWS Default Session")
+	glog.Infof("Creating AWS *default* session")
 	return session.NewSession(&aws.Config{
-			Region: aws.String(region),
+			Region: aws.String(defaultRegion),
 			//Credentials: credentials.NewStaticCredentials(os.Getenv),
 		})
 }
 
-func createBucket(svc *s3.S3, name, region string) (*v1alpha1.Connection, error) {
+func (p awsS3Provisioner) createBucket(name string) (*v1alpha1.Connection, error) {
 
 	bucketinput := &s3.CreateBucketInput{
 		Bucket: &name,
 	}
 
-	_, err := svc.CreateBucket(bucketinput)
+	_, err := p.service.CreateBucket(bucketinput)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -173,12 +172,12 @@ func createBucket(svc *s3.S3, name, region string) (*v1alpha1.Connection, error)
 			BucketHost: s3Host,
 			BucketPort: 443,
 			BucketName: name,
-			Region:     region,
+			Region:     p.region,
 		},
 		&v1alpha1.Authentication{
 			&v1alpha1.AccessKeys{
-				AccessKeyId:     os.Getenv(v1alpha1.AwsKeyField),
-				SecretAccessKey: os.Getenv(v1alpha1.AwsSecretField),
+				AccessKeyId:     p.accessKeyId,
+				SecretAccessKey: p.accessSecret,
 			},
 		},
 	}, nil
@@ -186,91 +185,109 @@ func createBucket(svc *s3.S3, name, region string) (*v1alpha1.Connection, error)
 
 // Get the secret namespace and name from the passed in map. 
 // Empty strings are also returned.
-func getSecretName(parms map[string]string) (ns, name string) {
+func getSecretName(parms map[string]string) (string, string) {
 
 	const (
 		scSecretNameKey = "secretName"
 		scSecretNSKey   = "secretNamespace"
 	)
-
-	ns, _ = parms[scSecretNSKey]
-	name, _ = parms[scSecretNameKey]
-	return
+	return parms[scSecretNSKey], parms[scSecretNameKey]
 }
 
-// Get the secret and return its accessKeyId string and secretKey string.
-func credsFromSecret(c *kubernetes.Clientset, ns, name string) (string, string, error) {
+// Get the secret and set the receiver to the accessKeyId and secretKey.
+func (p *awsS3Provisioner) credsFromSecret(c *kubernetes.Clientset, ns, name string) error {
 	secret, err := c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
-		return "", "", fmt.Errorf("unable to get Secret \"%s/%s\" with error %v", ns, name, err)
+		return fmt.Errorf("unable to get Secret \"%s/%s\" with error %v", ns, name, err)
 	}
 
-	return string(secret.Data[v1alpha1.AwsKeyField]), string(secret.Data[v1alpha1.AwsSecretField]), nil
+	accessKeyId := string(secret.Data[v1alpha1.AwsKeyField])
+	secretKey := string(secret.Data[v1alpha1.AwsSecretField])
+	if accessKeyId == "" || secretKey == "" {
+		return fmt.Errorf("accessId and/or secretKey are blank in secret \"%s/%s\"", secret.Namespace, secret.Name)
+	}
+
+	// set receiver fields
+	p.accessKeyId = accessKeyId
+	p.accessSecret = secretKey
+	return nil
 }
 
+// Create an aws session based on the OBC's storage class's secret and region.
+// Set in the receiver the session and region used to create the session.
+// Note: in error cases it's possible that the returned region is different
+//   from the OBC's storage class's region.
+func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim) error {
 
-// Provision creates an aws s3 bucket and returns a connection info representing
-// the bucket's endpoint and user access credentials.
-func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Connection, error) {
+	const scRegionKey = "region"
+	var err error
 
-	const (
-		defaultRegion   = "us-west-1"
-		scRegionKey     = "region"
-	)
-	var region string
-
-	// create general session object -- WHY Scott??
-	sess := &session.Session{}
-
-	// Get the storageclass here so we can get credentials?
-	sc, err := p.getClassForBucketClaim(options.ObjectBucketClaim)
-	if err != nil || sc == nil {
-		glog.Infof("StorageClass missing in OBC %q", options.ObjectBucketClaim.Name)
-		// fall back to using aws config on host node which should
-		// follow normal AWS credential chain
-		sess, err = awsDefaultSession(defaultRegion)
-
-	} else {
-		// get expected sc parameters containing region and secret 
-		var ok bool
-		region, ok = sc.Parameters[scRegionKey]
-		if !ok || region == "" {
-			region = defaultRegion
-		}
-		secretNS, secretName := getSecretName(sc.Parameters)
-		if secretNS == "" || secretName == "" {
-			glog.Warningf("secret name or namespace are empty in storage class %q", sc.Name)
-			sess, err = awsDefaultSession(region)
-		} else {
-			// get the sc's bucket owner secret
-			accessId, accessSecret, err := credsFromSecret(p.clientset, secretNS, secretName)
-			if err != nil || len(accessId) == 0 || len(accessSecret) == 0 {
-				glog.Warningf("secret \"%s/%s\" in storage class %q for OBC %q is empty.\nUsing default credentials.", secretNS, secretName, sc.Name, options.ObjectBucketClaim.Name)
-				sess, err = awsDefaultSession(region)
-				if err != nil {
-					glog.Errorf("session not being created from awsDefaultSession %s %v", region, err)
-				}
-				if sess == nil {
-					glog.Warningf("session is nil")
-				}
-			} else {
-				// use the OBC's SC to create our session
-				glog.Infof("Creating session using static credentials from storageclass secret")
-				sess, err = session.NewSession(&aws.Config{
-					Region:      aws.String(region),
-					Credentials: credentials.NewStaticCredentials(accessId, accessSecret, ""),
-				})
-			}
-		}
+	// helper func var for error returns
+	var errDefault = func() error {
+		p.region = defaultRegion
+		p.session, err = awsDefaultSession()
+		return err
 	}
 
-	// Create a new service for aws.Config
-	svc := s3.New(sess)
+	sc, err := p.getClassForBucketClaim(obc)
+	if err != nil {
+		glog.Errorf("Get failed for storage class %q", obc.Spec.StorageClassName)
+		return errDefault()
+	}
+	
+	// get expected sc parameters containing region and secret 
+	region, ok := sc.Parameters[scRegionKey]
+	if !ok || region == "" {
+		region = defaultRegion
+	}
+	secretNS, secretName := getSecretName(sc.Parameters)
+	if secretNS == "" || secretName == "" {
+		glog.Warningf("secret name or namespace are empty in storage class %q", sc.Name)
+		return errDefault()
+	}
+
+	// get the sc's bucket owner secret
+	err = p.credsFromSecret(p.clientset, secretNS, secretName)
+	if err != nil {
+		glog.Warningf("secret \"%s/%s\" in storage class %q for OBC %q is empty.\nUsing default credentials.", secretNS, secretName, sc.Name, obc.Name)
+		return errDefault()
+	}
+
+	// use the OBC's SC to create our session, set receiver fields
+	glog.Infof("Creating aws session using credentials from storage class %s's secret", sc.Name)
+	p.region = region
+	p.session, err = session.NewSession(&aws.Config{
+			Region:      aws.String(region),
+			Credentials: credentials.NewStaticCredentials(p.accessKeyId, p.accessSecret, ""),
+	})
+
+	return err
+}
+
+// Provision creates an aws s3 bucket and returns a connection info
+// representing the bucket's endpoint and user access credentials.
+func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Connection, error) {
+
+	obc := options.ObjectBucketClaim
+
+	// set the aws session from the obc in the receiver
+	err := p.awsSessionFromOBC(obc)
+	if err != nil {
+		return nil, fmt.Errorf("error creating session from OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
+	}
+
+	glog.Infof("Creating S3 service for OBC \"%s/%s\"", obc.Namespace, obc.Name)
+	p.service = s3.New(p.session)
 
 	//TODO - maybe use private bucket creds in future
 	//bucketAccessId, bucketSecretKey, err := createIAM(sess)
 
-	return createBucket(svc, options.BucketName, region)
+	glog.Infof("Creating bucket %q", options.BucketName)
+	conn, err := p.createBucket(options.BucketName)
+	if err != nil {
+		glog.Errorf("error creating bucket %q: %v", options.BucketName, err)
+	}
+	return conn, err
 }
 
 // Delete OBC??
