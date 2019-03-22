@@ -20,8 +20,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	_ "net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -51,9 +53,11 @@ import (
 
 const (
 	defaultRegion	= "us-west-1"
+	httpPort	= 80
+	httpsPort	= 443
 	provisionerName	= "aws-s3.io/bucket"
-	s3Host		= "s3"
-	s3Domain	= ".amazonaws.com"
+	regionInsert	= "<REGION>"
+	s3Hostname	= "s3-"+regionInsert+".amazonaws.com"
 )
 
 var (
@@ -165,14 +169,16 @@ func (p awsS3Provisioner) createBucket(name string) (*v1alpha1.Connection, error
 		}
 		return nil, fmt.Errorf("Bucket %q could not be created: %v", name, err)
 	}
-
 	glog.Infof("Bucket %s successfully created", name)
+
+	host := strings.Replace(s3Hostname, regionInsert, p.region, 1)
 	return  &v1alpha1.Connection{
 		&v1alpha1.Endpoint{
-			BucketHost: fmt.Sprintf("%s//:%s", s3Host, s3Domain),
-			BucketPort: 443,
+			BucketHost: host,
+			BucketPort: httpsPort,
 			BucketName: name,
 			Region:     p.region,
+			SSL:	    true,
 		},
 		&v1alpha1.Authentication{
 			&v1alpha1.AccessKeys{
