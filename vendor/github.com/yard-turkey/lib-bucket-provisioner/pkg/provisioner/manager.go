@@ -4,21 +4,20 @@ import (
 	"flag"
 	"time"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
-
-	"k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
+
 	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
-	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/bucket-reconciler"
 	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/claim-reconciler"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 )
 
 // ProvisionerController is the first iteration of our internal provisioning
@@ -52,7 +51,9 @@ func NewProvisioner(
 	provisioner api.Provisioner,
 	options *ProvisionerOptions,
 ) *ProvisionerController {
+
 	klog.V(2).Infof("constructing new provisioner: %s", provisionerName)
+
 	var err error
 	ctrl := &ProvisionerController{
 		Provisioner: provisioner,
@@ -74,9 +75,27 @@ func NewProvisioner(
 		klog.Fatalf("error adding api resources to scheme")
 	}
 
-	rc, err := client.New(cfg, client.Options{})
+	client := ctrl.Manager.GetClient()
 	if err != nil {
 		klog.Fatalf("error generating new client: %v", err)
+	}
+
+	skipUpdate := predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			klog.V(util.DebugLogLvl).Infof("event: Create kind(%v) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind(), createEvent.Meta.GetName())
+			return true
+		},
+		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
+			klog.V(util.DebugLogLvl).Infof("event: Update (ignored) kind(%s) key(%s)", updateEvent.ObjectNew.GetObjectKind().GroupVersionKind().String(), updateEvent.MetaNew.GetName())
+			return false
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			klog.V(util.DebugLogLvl).Infof("event: Delete (ignored) kind(%v) key(%s)", deleteEvent.Object.GetObjectKind().GroupVersionKind(), deleteEvent.Meta.GetName())
+			return true
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
+		},
 	}
 
 	// Init ObjectBucketClaim controller.
@@ -84,9 +103,8 @@ func NewProvisioner(
 	klog.V(util.DebugLogLvl).Info("building claim controller manager")
 	err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucketClaim{}).
-		Owns(&v1.ConfigMap{}).
-		Owns(&v1.Secret{}).
-		Complete(claimReconciler.NewObjectBucketClaimReconciler(rc, provisionerName, provisioner, claimReconciler.Options{
+		WithEventFilter(skipUpdate).
+		Complete(claimReconciler.NewObjectBucketClaimReconciler(client, provisionerName, provisioner, claimReconciler.Options{
 			RetryInterval: options.ProvisionBaseInterval,
 			RetryBackoff:  options.ProvisionRetryBackoff,
 			RetryTimeout:  options.ProvisionRetryTimeout,
@@ -94,21 +112,7 @@ func NewProvisioner(
 	if err != nil {
 		klog.Fatalf("error creating ObjectBucketClaim controller: %v", err)
 	}
-
-	// TODO retrieve client generated in manager instead of expecting one to be passed in
-
-	// Init ObjectBucket controller
-	// TODO I put this here after we decided that OBs should
-	//  be Reconciled independently, similar to PVs.  This may
-	//  not be what we ultimately want.
-	if err = builder.ControllerManagedBy(ctrl.Manager).
-		For(&v1alpha1.ObjectBucket{}).
-		Complete(&bucketReconciler.ObjectBucketReconciler{Client: rc}); err != nil {
-		klog.Fatalf("error creating ObjectBucket controller: %v", err)
-	}
-
 	return ctrl
-
 }
 
 // Run starts the claim and bucket controllers.

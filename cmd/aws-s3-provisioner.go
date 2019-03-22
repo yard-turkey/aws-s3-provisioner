@@ -62,15 +62,15 @@ var (
 )
 
 type awsS3Provisioner struct {
-	region	     string
+	region	  string
 	// session is the aws session
-	session	     *session.Session
+	session	  *session.Session
 	// service is the aws s3 service based on the session
-	service	     *s3.S3
-	clientset    *kubernetes.Clientset
-	// accessKeyId is the aws account id
-	accessKeyId  string
-	accessSecret string
+	service	  *s3.S3
+	clientset *kubernetes.Clientset
+	// access keys for aws acct for the bucket *owner*
+	bktOwnerAccessId  string
+	bktOwnerSecretKey string
 }
 
 func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) *libbkt.ProvisionerController {
@@ -169,15 +169,15 @@ func (p awsS3Provisioner) createBucket(name string) (*v1alpha1.Connection, error
 	glog.Infof("Bucket %s successfully created", name)
 	return  &v1alpha1.Connection{
 		&v1alpha1.Endpoint{
-			BucketHost: s3Host,
+			BucketHost: fmt.Sprintf("%s//:%s", s3Host, s3Domain),
 			BucketPort: 443,
 			BucketName: name,
 			Region:     p.region,
 		},
 		&v1alpha1.Authentication{
 			&v1alpha1.AccessKeys{
-				AccessKeyId:     p.accessKeyId,
-				SecretAccessKey: p.accessSecret,
+				AccessKeyId:     p.bktOwnerAccessId,
+				SecretAccessKey: p.bktOwnerSecretKey,
 			},
 		},
 	}, nil
@@ -208,8 +208,8 @@ func (p *awsS3Provisioner) credsFromSecret(c *kubernetes.Clientset, ns, name str
 	}
 
 	// set receiver fields
-	p.accessKeyId = accessKeyId
-	p.accessSecret = secretKey
+	p.bktOwnerAccessId = accessKeyId
+	p.bktOwnerSecretKey = secretKey
 	return nil
 }
 
@@ -258,7 +258,7 @@ func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim) er
 	p.region = region
 	p.session, err = session.NewSession(&aws.Config{
 			Region:      aws.String(region),
-			Credentials: credentials.NewStaticCredentials(p.accessKeyId, p.accessSecret, ""),
+			Credentials: credentials.NewStaticCredentials(p.bktOwnerAccessId, p.bktOwnerSecretKey, ""),
 	})
 
 	return err
