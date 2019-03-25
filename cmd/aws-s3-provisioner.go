@@ -296,10 +296,17 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 	return conn, err
 }
 
-// Delete OBC??
+// Delete the bucket references in the passed-in OB.
 func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
-	//TODO
-	return nil
+
+	bktName := ob.Spec.Endpoint.BucketName
+	bucketinput := &s3.DeleteBucketInput{
+		Bucket: &bktName,
+	}
+	glog.Infof("Deleting bucket %q via OB %q", bktName, ob.Name)
+
+	_, err := p.service.DeleteBucket(bucketinput)
+	return err
 }
 
 // create k8s config and client for the runtime-controller. 
