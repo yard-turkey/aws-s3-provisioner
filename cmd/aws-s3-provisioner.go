@@ -39,6 +39,7 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	libbkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner"
 	apibkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	bkterr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -162,9 +163,13 @@ func (p awsS3Provisioner) createBucket(name string) (*v1alpha1.Connection, error
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case s3.ErrCodeBucketAlreadyExists:
-				return nil, fmt.Errorf("Bucket %q already exists", name)
+				msg := fmt.Sprintf("Bucket %q already exists", name)
+				glog.Errorf(msg)
+				return nil, bkterr.NewBucketExistsError(msg)
 			case s3.ErrCodeBucketAlreadyOwnedByYou:
-				return nil, fmt.Errorf("Bucket %q already owned by you", name)
+				msg := fmt.Sprintf("Bucket %q already owned by you", name)
+				glog.Errorf(msg)
+				return nil, bkterr.NewBucketExistsError(msg)
 			}
 		}
 		return nil, fmt.Errorf("Bucket %q could not be created: %v", name, err)
