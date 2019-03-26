@@ -32,6 +32,7 @@ import (
 	// "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	awsuser "github.com/aws/aws-sdk-go/service/iam"
 	// "github.com/aws/aws-sdk-go-v2/service/iam"
 
@@ -70,8 +71,8 @@ type awsS3Provisioner struct {
 	region	  string
 	// session is the aws session
 	session	  *session.Session
-	// service is the aws s3 service based on the session
-	service	  *s3.S3
+	// svc is the aws s3 service based on the session
+	svc	  *s3.S3
 	clientset *kubernetes.Clientset
 	// access keys for aws acct for the bucket *owner*
 	bktOwnerAccessId  string
@@ -82,14 +83,6 @@ func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner)
 
 	opts := &libbkt.ProvisionerOptions{}
 	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, opts)
-}
-
-// return value of string pointer or ""
-func StringValue(v *string) string {
-	if v != nil {
-		return *v
-	}
-	return ""
 }
 
 func createIAM(sess *session.Session) (string, string, error){
@@ -114,9 +107,9 @@ func createIAM(sess *session.Session) (string, string, error){
 	}
 	// print out successful result??
 	glog.Infof("Successfully created iam user %v", aresult)
-	myaccesskey := StringValue(aresult.AccessKey.AccessKeyId)
+	myaccesskey := aws.StringValue(aresult.AccessKey.AccessKeyId)
 	glog.Infof("accessKey = %s", myaccesskey)
-	mysecretaccesskey := StringValue(aresult.AccessKey.SecretAccessKey)
+	mysecretaccesskey := aws.StringValue(aresult.AccessKey.SecretAccessKey)
 	glog.Infof("accessKey = %s", mysecretaccesskey)
 
 	return myaccesskey, mysecretaccesskey, nil
@@ -158,7 +151,7 @@ func (p awsS3Provisioner) createBucket(name string) (*v1alpha1.Connection, error
 		Bucket: &name,
 	}
 
-	_, err := p.service.CreateBucket(bucketinput)
+	_, err := p.svc.CreateBucket(bucketinput)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -288,7 +281,7 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 	}
 
 	glog.Infof("Creating S3 service for OBC \"%s/%s\"", obc.Namespace, obc.Name)
-	p.service = s3.New(p.session)
+	p.svc = s3.New(p.session)
 
 	//TODO - maybe use private bucket creds in future
 	//bucketAccessId, bucketSecretKey, err := createIAM(sess)
@@ -301,17 +294,30 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 	return conn, err
 }
 
-// Delete the bucket references in the passed-in OB.
+// Delete the bucket and all its objects.
+// Note: only called when the bucket's reclaim policy is "delete".
 func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 
 	bktName := ob.Spec.Endpoint.BucketName
-	bucketinput := &s3.DeleteBucketInput{
-		Bucket: &bktName,
-	}
-	glog.Infof("Deleting bucket %q via OB %q", bktName, ob.Name)
+	iter := s3manager.NewDeleteListIterator(p.svc, &s3.ListObjectsInput{
+		Bucket: aws.String(bktName),
+	})
 
-	_, err := p.service.DeleteBucket(bucketinput)
-	return err
+	glog.Infof("Deleting all objects in bucket %q (from OB %q)", bktName, ob.Name)
+	err := s3manager.NewBatchDeleteWithClient(p.svc).Delete(aws.BackgroundContext(), iter)
+	if err != nil {
+		return fmt.Errorf("Error deleting objects from bucket %q: %v", bktName,  err)
+	}
+
+	glog.Infof("Deleting empty bucket %q from OB %q", bktName, ob.Name)
+	_, err = p.svc.DeleteBucket(&s3.DeleteBucketInput{
+    		Bucket: aws.String(bktName),
+	})
+	if err != nil {
+		return fmt.Errorf("Error deleting empty bucket %q: %v", bktName,  err)
+	}
+
+	return nil
 }
 
 // create k8s config and client for the runtime-controller. 
