@@ -201,7 +201,7 @@ func (p *awsS3Provisioner) attachPolicyToUser(policyName string, username string
 
 	_, err = p.iamservice.AttachUserPolicy(&awsuser.AttachUserPolicyInput{PolicyArn: aws.String(policyARN), UserName: aws.String(p.bktUserName)})
 	if err == nil {
-		glog.Infof("Successfully attached Policy %s to User %", policyName, p.bktUserName)
+		glog.Infof("Successfully attached Policy %s to User %s", policyName, p.bktUserName)
 	}
 	return err
 }
