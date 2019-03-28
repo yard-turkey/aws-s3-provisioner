@@ -21,9 +21,30 @@ import (
 	_ "net/url"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	storageV1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
+
+// GetClassForVolume locates storage class by persistent volume
+func (p awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim) (*storageV1.StorageClass, error) {
+        if p.clientset == nil {
+                return nil, fmt.Errorf("Cannot get kube client")
+        }
+        className := obc.Spec.StorageClassName
+        if className == "" {
+                // keep trying to find credentials or storageclass?
+                // Yes, w/ exponential backoff
+                return nil, fmt.Errorf("StorageClass missing in OBC %q", obc.Name)
+        }
+
+        class, err := p.clientset.StorageV1().StorageClasses().Get(className, metav1.GetOptions{})
+        // TODO: retry w/ exponential backoff
+        if err != nil {
+                return nil, err
+        }
+        return class, nil
+}
 
 // Get the secret namespace and name from the passed in map.
 // Empty strings are also returned.

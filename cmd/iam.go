@@ -27,6 +27,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	apibkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	storageV1 "k8s.io/api/storage/v1"
 )
 
 // PolicyDocument is the structure of IAM policy document
@@ -43,16 +44,14 @@ type StatementEntry struct {
 	Resource []string
 }
 
-// Handle Policy and User Creation if
-// flag is set
+// Handle Policy and User Creation if flag is set.
+// Note: new user name is the same as the bucket name.
 func (p awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (string, string, error) {
-	userAccessId := p.bktUserAccessId
-	userSecretKey := p.bktUserSecretKey
 
 	userAccessId, userSecretKey, err := p.createIAMUser("")
 	if err != nil {
 		//should we fail here or keep going?
-		glog.Errorf("error creating IAMUser %s: %v", options.BucketName, err)
+		glog.Errorf("error creating IAM user %s: %v", options.BucketName, err)
 		return "", "", err
 	}
 
@@ -69,17 +68,17 @@ func (p awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (st
 	}
 
 	//Create the policy in aws for the user and bucket
-	_, perr := p.createUserPolicy(p.iamservice, options.BucketName, policyDoc)
-	if perr != nil {
+	_, err = p.createUserPolicy(p.iamservice, options.BucketName, policyDoc)
+	if err != nil {
 		//should we fail here or keep going?
-		glog.Errorf("error creating userPolicy for %s on bucket %s: %v", p.bktUserName, options.BucketName, perr)
+		glog.Errorf("error creating userPolicy for user %q on bucket %q: %v", p.bktUserName, options.BucketName, err)
 		return userAccessId, userSecretKey, err
 	}
 
 	//attach policy to user
-	aperr := p.attachPolicyToUser(options.BucketName, p.bktUserName)
-	if aperr != nil {
-		glog.Errorf("error attaching userPolicy for %s on bucket %s: %v", p.bktUserName, options.BucketName, aperr)
+	err = p.attachPolicyToUser(options.BucketName, p.bktUserName)
+	if err != nil {
+		glog.Errorf("error attaching userPolicy for user %q on bucket %q: %v", p.bktUserName, options.BucketName, err)
 		return userAccessId, userSecretKey, err
 	}
 
@@ -123,11 +122,11 @@ func (p awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOptio
 	/*
 		if spec.LocalPermission != nil {
 			switch *spec.LocalPermission {
-			case storage.ReadOnlyPermission:
+			case storageV1.ReadOnlyPermission:
 				policy.Statement = append(policy.Statement, read)
-			case storage.WriteOnlyPermission:
+			case storageV1.WriteOnlyPermission:
 				policy.Statement = append(policy.Statement, write)
-			case storage.ReadWritePermission:
+			case storageV1.ReadWritePermission:
 				policy.Statement = append(policy.Statement, read, write)
 			default:
 				return "", fmt.Errorf("unknown permission, %s", *spec.LocalPermission)
@@ -231,7 +230,7 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 	}
 
 	// print out successful result
-	glog.Infof("Successfully created iam user %v", uresult)
+	glog.V(2).Infof("Successfully created iam user %v", uresult)
 
 	//Create the Access Keys for the new user
 	aresult, aerr := iamsvc.CreateAccessKey(&awsuser.CreateAccessKeyInput{
@@ -241,23 +240,19 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 		//print error message
 		glog.Errorf("error creating accessKey %v", aerr)
 	}
-	glog.Infof("Successfully created Access Keys for user %s %v", myuser, aresult)
+	glog.V(2).Infof("Successfully created Access Keys for user %s: %v", myuser, aresult)
 	// print out successful result for testing
 	// and populate our receiver
-	glog.V(2).Infof("Summary of successful created iam user %s", myuser)
-	myaccesskey := aws.StringValue(aresult.AccessKey.AccessKeyId)
-	p.bktUserAccessId = myaccesskey
-	glog.V(2).Infof("accessKey = %s", myaccesskey)
-	mysecretaccesskey := aws.StringValue(aresult.AccessKey.SecretAccessKey)
-	p.bktUserSecretKey = mysecretaccesskey
-	glog.V(2).Infof("accessKey = %s", mysecretaccesskey)
+	p.bktUserAccessId = aws.StringValue(aresult.AccessKey.AccessKeyId)
+	p.bktUserSecretKey = aws.StringValue(aresult.AccessKey.SecretAccessKey)
+	glog.V(2).Infof("Summary of successfully created IAM user %q:\n   accessKey=%s\n   secretAccessKey=%s", myuser, p.bktUserAccessId, p.bktUserSecretKey)
 
-	return myaccesskey, mysecretaccesskey, nil
+	return p.bktUserAccessId, p.bktUserSecretKey, nil
 }
 
 // Get StorageClass from OBC and check params
 // for createBucketUser and set provisioner.
-func (p *awsS3Provisioner) setCreateBucketUserOptions(obc *v1alpha1.ObjectBucketClaim) error {
+func (p *awsS3Provisioner) setCreateBucketUserOptions(obc *v1alpha1.ObjectBucketClaim, sc *storageV1.StorageClass) error {
 
 	const (
 		scBucketUser = "createBucketUser"

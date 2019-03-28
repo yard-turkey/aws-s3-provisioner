@@ -38,8 +38,7 @@ import (
 	apibkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 	bkterr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
 
-	storage "k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	storageV1 "k8s.io/api/storage/v1"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -91,26 +90,6 @@ func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner)
 	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, opts)
 }
 
-// GetClassForVolume locates storage class by persistent volume
-func (p awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim) (*storage.StorageClass, error) {
-	if p.clientset == nil {
-		return nil, fmt.Errorf("Cannot get kube client")
-	}
-	className := obc.Spec.StorageClassName
-	if className == "" {
-		// keep trying to find credentials or storageclass?
-		// Yes, w/ exponential backoff
-		return nil, fmt.Errorf("StorageClass missing in OBC %q", obc.Name)
-	}
-
-	class, err := p.clientset.StorageV1().StorageClasses().Get(className, metav1.GetOptions{})
-	// TODO: retry w/ exponential backoff
-	if err != nil {
-		return nil, err
-	}
-	return class, nil
-}
-
 // Return the aws default session.
 func awsDefaultSession() (*session.Session, error) {
 
@@ -121,7 +100,9 @@ func awsDefaultSession() (*session.Session, error) {
 	})
 }
 
+// Return the connection record.
 func (p awsS3Provisioner) createConnection(name, accessId, secretKey string) *v1alpha1.Connection {
+
 	host := strings.Replace(s3Hostname, regionInsert, p.region, 1)
 	return &v1alpha1.Connection{
 		&v1alpha1.Endpoint{
@@ -173,22 +154,16 @@ func (p awsS3Provisioner) createBucket(name string) error {
 // Set in the receiver the session and region used to create the session.
 // Note: in error cases it's possible that the returned region is different
 //   from the OBC's storage class's region.
-func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim) error {
+func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim, sc *storageV1.StorageClass) error {
 
 	const scRegionKey = "region"
-	var err error
 
 	// helper func var for error returns
 	var errDefault = func() error {
+		var err error
 		p.region = defaultRegion
 		p.session, err = awsDefaultSession()
 		return err
-	}
-
-	sc, err := p.getClassForBucketClaim(obc)
-	if err != nil {
-		glog.Errorf("Get failed for storage class %q", obc.Spec.StorageClassName)
-		return errDefault()
 	}
 
 	// get expected sc parameters containing region and secret
@@ -203,7 +178,7 @@ func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim) er
 	}
 
 	// get the sc's bucket owner secret
-	err = p.credsFromSecret(p.clientset, secretNS, secretName)
+	err := p.credsFromSecret(p.clientset, secretNS, secretName)
 	if err != nil {
 		glog.Warningf("secret \"%s/%s\" in storage class %q for OBC %q is empty.\nUsing default credentials.", secretNS, secretName, sc.Name, obc.Name)
 		return errDefault()
@@ -222,19 +197,33 @@ func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim) er
 
 // Provision creates an aws s3 bucket and returns a connection info
 // representing the bucket's endpoint and user access credentials.
+// Programming Note: _all_ methods on "awsS3Provisioner" called directly
+//   or indirectly by `Provision` should use pointer receivers. This allows
+//   all supporting methods to set receiver fields where convenient. An
+//   alternative (arguably better) would be for all supporting methods
+//   to take value receivers and functionally return back to `Provision`
+//   receiver fields they need to set. The first approach is easier now.
 func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Connection, error) {
 
+	// get the OBC and its storage class
 	obc := options.ObjectBucketClaim
-	err := p.setCreateBucketUserOptions(obc)
+	sc, err := p.getClassForBucketClaim(obc)
 	if err != nil {
-		//letting it keep going if there is some strange error here, shouldn't be
-		//just won't do any user creation
+		glog.Errorf("failed to get storage class %q for OBC %q: %v", obc.Spec.StorageClassName, obc.Name, err)
+		return nil, err
+	}
+
+	// check for bkt user access policy vs. bkt owner policy based on SC
+	err = p.setCreateBucketUserOptions(obc, sc)
+	if err != nil {
+		// keep going if there is some strange error here, shouldn't be
+		// just won't do any user creation
 		glog.Errorf("error setting Bucket User Options %q: %v", options.BucketName, err)
 		p.bktCreateUser = "no"
 	}
 
 	// set the aws session from the obc in the receiver
-	err = p.awsSessionFromOBC(obc)
+	err = p.awsSessionFromOBC(obc, sc)
 	if err != nil {
 		return nil, fmt.Errorf("error creating session from OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
 	}
