@@ -44,9 +44,9 @@ type StatementEntry struct {
 	Resource []string
 }
 
-// Handle Policy and User Creation if flag is set.
+// Handle Policy and User Creation when flag is set.
 // Note: new user name is the same as the bucket name.
-func (p awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (string, string, error) {
+func (p *awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (string, string, error) {
 
 	userAccessId, userSecretKey, err := p.createIAMUser("")
 	if err != nil {
@@ -85,7 +85,8 @@ func (p awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (st
 	return userAccessId, userSecretKey, nil
 }
 
-func (p awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOptions) (string, error) {
+func (p *awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOptions) (string, error) {
+
 	bucketARN := fmt.Sprintf(s3BucketArn, options.BucketName)
 	glog.V(2).Infof("createBucketPolicyDocument - bucketARN = %s", bucketARN)
 
@@ -98,9 +99,6 @@ func (p awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOptio
 		},
 		Resource: []string{bucketARN + "/*"},
 	}
-
-	//TODO uncomment after implement the switch below
-	//TODO default should be ?
 	write := StatementEntry{
 		Sid:    "s3Write",
 		Effect: "Allow",
@@ -135,7 +133,6 @@ func (p awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOptio
 	*/
 	//For now hard coding read and write
 	policy.Statement = append(policy.Statement, read, write)
-	//policy.Statement = append(policy.Statement, read)
 
 	b, err := json.Marshal(&policy)
 	if err != nil {
@@ -176,11 +173,13 @@ func (p *awsS3Provisioner) getPolicyARN(policyName string) (string, error) {
 	return policyARN, nil
 }
 
-func (p awsS3Provisioner) attachPolicyToUser(policyName string, username string) error {
+func (p *awsS3Provisioner) attachPolicyToUser(policyName string, username string) error {
+
 	policyArn, err := p.getPolicyARN(policyName)
 	if err != nil {
 		return err
 	}
+
 	_, err = p.iamservice.AttachUserPolicy(&awsuser.AttachUserPolicyInput{PolicyArn: aws.String(policyArn), UserName: aws.String(p.bktUserName)})
 	return err
 }
@@ -204,15 +203,19 @@ func (p *awsS3Provisioner) getAccountID() (string, error) {
 	return aws.StringValue(&arnData.AccountID), nil
 }
 
-// Create Dyanamic IAM User and pass back accessKeys
+// Create dyanamic IAM user, pass back accessKeys and set user name in receiver.
+// The user name is set to 1) passed-in user string, 2) receiver's user name
+// field, 3) bucket name.
 func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
-	//Create an iam user to pass back as bucket creds???
 
-	myuser := p.bktUserName
-	if len(user) != 0 {
-		myuser = user
-		p.bktUserName = user
+	myuser := user
+	if len(myuser) == 0 {
+		myuser = p.bktUserName
 	}
+	if len(myuser) == 0 {
+		myuser = p.bucketName
+	}
+	p.bktUserName = myuser
 	glog.V(2).Infof("in createIAM - user %s", myuser)
 
 	//Create IAM service (maybe this should be added into our default or obc session
@@ -221,25 +224,26 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 	p.iamservice = iamsvc
 
 	//Create the new user
-	uresult, uerr := iamsvc.CreateUser(&awsuser.CreateUserInput{
+	uresult, err := iamsvc.CreateUser(&awsuser.CreateUserInput{
 		UserName: &myuser,
 	})
-	if uerr != nil {
-		glog.Errorf("error creating user %v", uerr)
-		return "", "", uerr
+	if err != nil {
+		glog.Errorf("error creating user %v", err)
+		return "", "", err
 	}
 
 	// print out successful result
 	glog.V(2).Infof("Successfully created iam user %v", uresult)
 
 	//Create the Access Keys for the new user
-	aresult, aerr := iamsvc.CreateAccessKey(&awsuser.CreateAccessKeyInput{
+	aresult, err := iamsvc.CreateAccessKey(&awsuser.CreateAccessKeyInput{
 		UserName: &myuser,
 	})
-	if aerr != nil {
-		//print error message
-		glog.Errorf("error creating accessKey %v", aerr)
+	if err != nil {
+		glog.Errorf("error creating accessKey %v", err)
+		return "", "", err
 	}
+
 	glog.V(2).Infof("Successfully created Access Keys for user %s: %v", myuser, aresult)
 	// print out successful result for testing
 	// and populate our receiver
@@ -250,34 +254,25 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 	return p.bktUserAccessId, p.bktUserSecretKey, nil
 }
 
-// Get StorageClass from OBC and check params
-// for createBucketUser and set provisioner.
-func (p *awsS3Provisioner) setCreateBucketUserOptions(obc *v1alpha1.ObjectBucketClaim, sc *storageV1.StorageClass) error {
+// Get StorageClass from OBC and check params for createBucketUser and set
+// provisioner receiver field.
+func (p *awsS3Provisioner) setCreateBucketUserOptions(obc *v1alpha1.ObjectBucketClaim, sc *storageV1.StorageClass) {
 
-	const (
-		scBucketUser = "createBucketUser"
-	)
+	const scBucketUser = "createBucketUser"
 
-	sc, err := p.getClassForBucketClaim(obc)
-	if err != nil {
-		glog.Errorf("Get failed for storage class %q", obc.Spec.StorageClassName)
-		p.bktCreateUser = "yes"
-		return err
-	}
-
-	// get expected sc parameters containing region and secret
+	// get sc user-access flag parameter
 	doCreateUser, ok := sc.Parameters[scBucketUser]
 	if !ok {
 		glog.V(2).Infof("setCreateBucketUserOptions - did not find StorageClass flag to create user %s - defaulting to create user", scBucketUser)
 		p.bktCreateUser = "yes"
-		return nil
+		return
 	}
 	if doCreateUser == "no" {
 		glog.V(2).Infof("setCreateBucketUserOptions - did find StorageClass flag to not create user %s", scBucketUser)
 		p.bktCreateUser = "no"
-		return nil
+		return
 	}
-	p.bktCreateUser = "yes"
 
-	return nil
+	p.bktCreateUser = "yes"
+	return
 }
