@@ -56,7 +56,6 @@ const (
 	s3Hostname       = "s3-" + regionInsert + ".amazonaws.com"
 	s3BucketArn      = "arn:aws:s3:::%s"
 	policyArn        = "arn:aws:iam::%s:policy/%s"
-	bucketUserName   = "screeleytest"
 	createBucketUser = false
 )
 
@@ -115,14 +114,14 @@ func (p awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim
 // Return the aws default session.
 func awsDefaultSession() (*session.Session, error) {
 
-	glog.Infof("Creating AWS *default* session")
+	glog.V(2).Infof("Creating AWS *default* session")
 	return session.NewSession(&aws.Config{
 		Region: aws.String(defaultRegion),
 		//Credentials: credentials.NewStaticCredentials(os.Getenv),
 	})
 }
 
-func (p *awsS3Provisioner) createConnection(name, accessId, secretKey string) *v1alpha1.Connection {
+func (p awsS3Provisioner) createConnection(name, accessId, secretKey string) *v1alpha1.Connection {
 	host := strings.Replace(s3Hostname, regionInsert, p.region, 1)
 	return &v1alpha1.Connection{
 		&v1alpha1.Endpoint{
@@ -211,7 +210,7 @@ func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim) er
 	}
 
 	// use the OBC's SC to create our session, set receiver fields
-	glog.Infof("Creating aws session using credentials from storage class %s's secret", sc.Name)
+	glog.V(2).Infof("Creating aws session using credentials from storage class %s's secret", sc.Name)
 	p.region = region
 	p.session, err = session.NewSession(&aws.Config{
 		Region:      aws.String(region),
@@ -226,53 +225,55 @@ func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim) er
 func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Connection, error) {
 
 	obc := options.ObjectBucketClaim
-	serr := p.setCreateBucketUserOptions(obc)
-	if serr != nil {
+	err := p.setCreateBucketUserOptions(obc)
+	if err != nil {
 		//letting it keep going if there is some strange error here, shouldn't be
 		//just won't do any user creation
-		glog.Errorf("error setting Bucket User Options %q: %v", options.BucketName, serr)
+		glog.Errorf("error setting Bucket User Options %q: %v", options.BucketName, err)
 		p.bktCreateUser = "no"
 	}
 
 	// set the aws session from the obc in the receiver
-	err := p.awsSessionFromOBC(obc)
+	err = p.awsSessionFromOBC(obc)
 	if err != nil {
 		return nil, fmt.Errorf("error creating session from OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
 	}
 
-	glog.Infof("Creating S3 service for OBC \"%s/%s\"", obc.Namespace, obc.Name)
+	glog.V(2).Infof("Creating S3 service for OBC \"%s/%s\"", obc.Namespace, obc.Name)
 	p.svc = s3.New(p.session)
 
-	//Create the bucket
+	// create the bucket
 	glog.Infof("Creating bucket %q", options.BucketName)
-	berr := p.createBucket(options.BucketName)
-	if berr != nil {
-		glog.Errorf("error creating bucket %q: %v", options.BucketName, berr)
-		return nil, fmt.Errorf("error creating bucket %q: %v", options.BucketName, berr)
+	err = p.createBucket(options.BucketName)
+	if err != nil {
+		err = fmt.Errorf("error creating bucket %q: %v", options.BucketName, err)
+		glog.Errorf(err.Error())
+		return nil, err
 	}
 
-	//createBucket was successful at this point
-	//we can create a new IAM user for access
-	//and attach policy to bucket and user
-	//Create New IAM User for the bucket
+	// createBucket was successful, deal with user and policy
+	// TODO: default access and key are set to bkt owner.
+	//   This needs to be more restrictive or a failure...
+	userAccessId, userSecretKey := p.bktOwnerAccessId, p.bktOwnerSecretKey
 	if p.bktCreateUser == "yes" {
-		//set user
-		p.setBucketUser(options.BucketName)
+		// Create a new IAM user using the name of the bucket and set
+		// access and attach policy for bucket and user
+		p.bktUserName = options.BucketName
 
-		//handle all iam and policy operations
-		userAccessId, userSecretKey, err := p.handleUserAndPolicy(options)
-		if err != nil {
+		// handle all iam and policy operations
+		uAccess, uKey, err := p.handleUserAndPolicy(options)
+		if err != nil || uAccess == "" || uKey == "" {
 			//what to do - something failed along the way
 			//do we fall back and create our connection with
 			//the default bktOwnerRef?
-			glog.Errorf("Something failed along the way for handling Users and Policy %v", err)
-			return p.createConnection(options.BucketName, p.bktOwnerAccessId, p.bktOwnerSecretKey), err
+			glog.Errorf("Something failed along the way for handling Users and Policy: %v", err)
+		} else {
+			userAccessId, userSecretKey = uAccess, uKey
 		}
-		return p.createConnection(options.BucketName, userAccessId, userSecretKey), nil
 	}
 
-	//Now create the connection
-	return p.createConnection(options.BucketName, p.bktOwnerAccessId, p.bktOwnerSecretKey), nil
+	// returned connection info
+	return p.createConnection(options.BucketName, userAccessId, userSecretKey), nil
 }
 
 // Delete the bucket and all its objects.
@@ -285,13 +286,13 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 		Bucket: aws.String(bktName),
 	})
 
-	glog.Infof("Deleting all objects in bucket %q (from OB %q)", bktName, ob.Name)
+	glog.V(2).Infof("Deleting all objects in bucket %q (from OB %q)", bktName, ob.Name)
 	err := s3manager.NewBatchDeleteWithClient(p.svc).Delete(aws.BackgroundContext(), iter)
 	if err != nil {
 		return fmt.Errorf("Error deleting objects from bucket %q: %v", bktName, err)
 	}
 
-	glog.Infof("Deleting empty bucket %q from OB %q", bktName, ob.Name)
+	glog.V(2).Infof("Deleting empty bucket %q from OB %q", bktName, ob.Name)
 	_, err = p.svc.DeleteBucket(&s3.DeleteBucketInput{
 		Bucket: aws.String(bktName),
 	})
@@ -299,6 +300,7 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 		return fmt.Errorf("Error deleting empty bucket %q: %v", bktName, err)
 	}
 
+	glog.Infof("Deleted bucket %q from OB %q", bktName, ob.Name)
 	return nil
 }
 
@@ -323,7 +325,7 @@ func main() {
 	handleFlags()
 
 	glog.Infof("AWS S3 Provisioner - main")
-	glog.Infof("flags: kubeconfig=%q; masterURL=%q", kubeconfig, masterURL)
+	glog.V(2).Infof("flags: kubeconfig=%q; masterURL=%q", kubeconfig, masterURL)
 
 	config, clientset := createConfigAndClientOrDie(masterURL, kubeconfig)
 
@@ -336,7 +338,7 @@ func main() {
 	// It implements the Provisioner interface expected by the bucket
 	// provisioning lib.
 	S3ProvisionerController := NewAwsS3Provisioner(config, s3Prov)
-	glog.Infof("main: running %s provisioner...", provisionerName)
+	glog.V(2).Infof("main: running %s provisioner...", provisionerName)
 	S3ProvisionerController.Run()
 
 	<-stopCh
@@ -347,7 +349,7 @@ func main() {
 // package's init(). Set global kubeconfig and masterURL variables depending
 // on flag values or env variables.
 // Note: `alsologtostderr` *must* be specified on the command line to see
-//   provisioner and bucketlibrary logging. Setting it here does not affect
+//   provisioner and bucket library logging. Setting it here does not affect
 //   the lib because its init() function has already run.
 func handleFlags() {
 

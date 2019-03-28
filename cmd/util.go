@@ -25,13 +25,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func (p *awsS3Provisioner) setBucketUser(name string) {
-	if len(name) == 0 {
-		p.bktUserName = bucketUserName
-	}
-	p.bktUserName = name
-}
-
 // Get the secret namespace and name from the passed in map.
 // Empty strings are also returned.
 func getSecretName(parms map[string]string) (string, string) {

@@ -2,6 +2,7 @@
 github.com/appscode/jsonpatch
 # github.com/aws/aws-sdk-go v1.18.2
 github.com/aws/aws-sdk-go/aws
+github.com/aws/aws-sdk-go/aws/arn
 github.com/aws/aws-sdk-go/aws/awserr
 github.com/aws/aws-sdk-go/aws/credentials
 github.com/aws/aws-sdk-go/aws/session
@@ -108,7 +109,7 @@ github.com/prometheus/procfs/xfs
 github.com/prometheus/procfs/internal/util
 # github.com/spf13/pflag v1.0.3
 github.com/spf13/pflag
-# github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190326181603-6b9126eeba50
+# github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190327220845-17ed71533488
 github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api
