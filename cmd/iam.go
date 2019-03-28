@@ -85,6 +85,25 @@ func (p *awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (s
 	return userAccessId, userSecretKey, nil
 }
 
+func (p *awsS3Provisioner) handleUserAndPolicyDeletion() error {
+	_, err := p.iamservice.DeletePolicy(&awsuser.DeletePolicyInput{PolicyArn: aws.String(p.bktUserPolicyArn)})
+	if err != nil {
+		// Not sure we want to stop the deletion of the user or bucket at this point
+		// so just logging an error
+		glog.Errorf("Error deleting User Policy %s", p.bktUserPolicyArn)
+	}
+
+	// Delete IAM User
+	_, err = p.iamservice.DeleteUser(&awsuser.DeleteUserInput{UserName: aws.String(p.bktUserName)})
+	if err != nil {
+		// Not sure we want to stop the deletion of the user or bucket at this point
+		// so just logging an error
+		glog.Errorf("Error deleting User %s", p.bktUserName)
+	}
+
+	return err
+}
+
 func (p *awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOptions) (string, error) {
 
 	bucketARN := fmt.Sprintf(s3BucketArn, options.BucketName)
@@ -175,20 +194,21 @@ func (p *awsS3Provisioner) getPolicyARN(policyName string) (string, error) {
 
 func (p *awsS3Provisioner) attachPolicyToUser(policyName string, username string) error {
 
-	policyArn, err := p.getPolicyARN(policyName)
+	policyARN, err := p.getPolicyARN(policyName)
 	if err != nil {
 		return err
 	}
 
-	_, err = p.iamservice.AttachUserPolicy(&awsuser.AttachUserPolicyInput{PolicyArn: aws.String(policyArn), UserName: aws.String(p.bktUserName)})
+	_, err = p.iamservice.AttachUserPolicy(&awsuser.AttachUserPolicyInput{PolicyArn: aws.String(policyARN), UserName: aws.String(p.bktUserName)})
+	if err == nil {
+		glog.Infof("Successfully attached Policy %s to User %", policyName, p.bktUserName)
+	}
 	return err
 }
 
 // getAccountID - Gets the accountID of the authenticated session.
 func (p *awsS3Provisioner) getAccountID() (string, error) {
-	//TODO - right now our authenticated session is from our provider (i.e. StorageClass)
-	//       do we need to create a new session with our *new* user
-	//       and get the accountID associated with that - maybe it's all the same
+
 	user, err := p.iamservice.GetUser(&awsuser.GetUserInput{
 		UserName: &p.bktUserName})
 	if err != nil {

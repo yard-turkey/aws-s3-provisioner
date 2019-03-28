@@ -54,7 +54,7 @@ const (
 	regionInsert     = "<REGION>"
 	s3Hostname       = "s3-" + regionInsert + ".amazonaws.com"
 	s3BucketArn      = "arn:aws:s3:::%s"
-	policyArn        = "arn:aws:iam::%s:policy/%s"
+	policyArn  = "arn:aws:iam::%s:policy/%s"
 	createBucketUser = false
 )
 
@@ -268,7 +268,15 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 // Delete the bucket and all its objects.
 // Note: only called when the bucket's reclaim policy is "delete".
 func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
-	//TODO clean up dynamic user + policy
+
+	// Delete IAM Policy and User
+	erruser := p.handleUserAndPolicyDeletion()
+	if erruser != nil {
+		// We are currently only logging
+		// because if failure do not want to stop
+		// deletion of bucket
+		glog.Infof("Failed to delete Policy and/or User - manual clean up required")
+	}
 
 	bktName := ob.Spec.Endpoint.BucketName
 	iter := s3manager.NewDeleteListIterator(p.svc, &s3.ListObjectsInput{
