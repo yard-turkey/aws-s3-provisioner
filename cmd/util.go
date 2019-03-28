@@ -27,7 +27,8 @@ import (
 )
 
 // GetClassForVolume locates storage class by persistent volume
-func (p awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim) (*storageV1.StorageClass, error) {
+func (p *awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim) (*storageV1.StorageClass, error) {
+
         if p.clientset == nil {
                 return nil, fmt.Errorf("Cannot get kube client")
         }
@@ -61,6 +62,7 @@ func getSecretName(parms map[string]string) (string, string) {
 func (p *awsS3Provisioner) credsFromSecret(c *kubernetes.Clientset, ns, name string) error {
 	secret, err := c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
+		// TODO: some kind of exponential backoff and retry...
 		return fmt.Errorf("unable to get Secret \"%s/%s\" with error %v", ns, name, err)
 	}
 

@@ -64,15 +64,16 @@ var (
 )
 
 type awsS3Provisioner struct {
-	region string
+	bucketName string
+	region	   string
 	// session is the aws session
-	session *session.Session
+	session	   *session.Session
 	// svc is the aws s3 service based on the session
-	svc *s3.S3
+	svc	   *s3.S3
 	// iam client
 	iamservice *awsuser.IAM
 	//kube client
-	clientset *kubernetes.Clientset
+	clientset  *kubernetes.Clientset
 	// access keys for aws acct for the bucket *owner*
 	bktOwnerAccessId  string
 	bktOwnerSecretKey string
@@ -101,7 +102,7 @@ func awsDefaultSession() (*session.Session, error) {
 }
 
 // Return the connection record.
-func (p awsS3Provisioner) createConnection(name, accessId, secretKey string) *v1alpha1.Connection {
+func (p *awsS3Provisioner) createConnection(name string) *v1alpha1.Connection {
 
 	host := strings.Replace(s3Hostname, regionInsert, p.region, 1)
 	return &v1alpha1.Connection{
@@ -114,14 +115,14 @@ func (p awsS3Provisioner) createConnection(name, accessId, secretKey string) *v1
 		},
 		&v1alpha1.Authentication{
 			&v1alpha1.AccessKeys{
-				AccessKeyId:     accessId,
-				SecretAccessKey: secretKey,
+				AccessKeyId:     p.bktUserAccessId,
+				SecretAccessKey: p.bktUserSecretKey,
 			},
 		},
 	}
 }
 
-func (p awsS3Provisioner) createBucket(name string) error {
+func (p *awsS3Provisioner) createBucket(name string) error {
 
 	bucketinput := &s3.CreateBucketInput{
 		Bucket: &name,
@@ -152,8 +153,8 @@ func (p awsS3Provisioner) createBucket(name string) error {
 
 // Create an aws session based on the OBC's storage class's secret and region.
 // Set in the receiver the session and region used to create the session.
-// Note: in error cases it's possible that the returned region is different
-//   from the OBC's storage class's region.
+// Note: in error cases it's possible that the set region is different from
+//   the OBC's storage class's region.
 func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim, sc *storageV1.StorageClass) error {
 
 	const scRegionKey = "region"
@@ -202,8 +203,11 @@ func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim, sc
 //   all supporting methods to set receiver fields where convenient. An
 //   alternative (arguably better) would be for all supporting methods
 //   to take value receivers and functionally return back to `Provision`
-//   receiver fields they need to set. The first approach is easier now.
+//   receiver fields they need set. The first approach is easier for now.
 func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Connection, error) {
+
+	// set the bucket name
+	p.bucketName = options.BucketName
 
 	// get the OBC and its storage class
 	obc := options.ObjectBucketClaim
@@ -214,13 +218,7 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 	}
 
 	// check for bkt user access policy vs. bkt owner policy based on SC
-	err = p.setCreateBucketUserOptions(obc, sc)
-	if err != nil {
-		// keep going if there is some strange error here, shouldn't be
-		// just won't do any user creation
-		glog.Errorf("error setting Bucket User Options %q: %v", options.BucketName, err)
-		p.bktCreateUser = "no"
-	}
+	p.setCreateBucketUserOptions(obc, sc)
 
 	// set the aws session from the obc in the receiver
 	err = p.awsSessionFromOBC(obc, sc)
@@ -232,10 +230,10 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 	p.svc = s3.New(p.session)
 
 	// create the bucket
-	glog.Infof("Creating bucket %q", options.BucketName)
-	err = p.createBucket(options.BucketName)
+	glog.Infof("Creating bucket %q", p.bucketName)
+	err = p.createBucket(p.bucketName)
 	if err != nil {
-		err = fmt.Errorf("error creating bucket %q: %v", options.BucketName, err)
+		err = fmt.Errorf("error creating bucket %q: %v", p.bucketName, err)
 		glog.Errorf(err.Error())
 		return nil, err
 	}
@@ -243,11 +241,12 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 	// createBucket was successful, deal with user and policy
 	// TODO: default access and key are set to bkt owner.
 	//   This needs to be more restrictive or a failure...
-	userAccessId, userSecretKey := p.bktOwnerAccessId, p.bktOwnerSecretKey
+	p.bktUserAccessId = p.bktOwnerAccessId
+	p.bktUserSecretKey = p.bktOwnerSecretKey
 	if p.bktCreateUser == "yes" {
 		// Create a new IAM user using the name of the bucket and set
 		// access and attach policy for bucket and user
-		p.bktUserName = options.BucketName
+		p.bktUserName = p.bucketName
 
 		// handle all iam and policy operations
 		uAccess, uKey, err := p.handleUserAndPolicy(options)
@@ -257,12 +256,13 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 			//the default bktOwnerRef?
 			glog.Errorf("Something failed along the way for handling Users and Policy: %v", err)
 		} else {
-			userAccessId, userSecretKey = uAccess, uKey
+			p.bktUserAccessId = uAccess
+			p.bktUserSecretKey = uKey
 		}
 	}
 
 	// returned connection info
-	return p.createConnection(options.BucketName, userAccessId, userSecretKey), nil
+	return p.createConnection(p.bucketName), nil
 }
 
 // Delete the bucket and all its objects.
