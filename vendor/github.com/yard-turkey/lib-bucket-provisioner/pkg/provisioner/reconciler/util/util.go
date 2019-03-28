@@ -138,6 +138,7 @@ func NewObjectBucket(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Conne
 	if obc == nil || connection == nil {
 		return nil, fmt.Errorf("obc and connection required")
 	}
+
 	return &v1alpha1.ObjectBucket{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: fmt.Sprintf(ObjectBucketFormat, obc.Namespace, obc.Name),

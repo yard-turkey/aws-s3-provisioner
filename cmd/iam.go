@@ -88,7 +88,7 @@ func (p awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (st
 
 func (p awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOptions) (string, error) {
 	bucketARN := fmt.Sprintf(s3BucketArn, options.BucketName)
-	glog.Infof("createBucketPolicyDocument - bucketARN = %s", bucketARN)
+	glog.V(2).Infof("createBucketPolicyDocument - bucketARN = %s", bucketARN)
 
 	read := StatementEntry{
 		Sid:    "s3Read",
@@ -159,7 +159,7 @@ func (p awsS3Provisioner) createUserPolicy(iamsvc *awsuser.IAM, policyName strin
 		return nil, err
 	}
 
-	glog.Infof("createUserPolicy %s successfully created", policyName)
+	glog.V(2).Infof("createUserPolicy %s successfully created", policyName)
 	return result, nil
 }
 
@@ -173,7 +173,7 @@ func (p *awsS3Provisioner) getPolicyARN(policyName string) (string, error) {
 	policyARN := fmt.Sprintf(policyArn, accountID, policyName)
 	//set the policyARN for our provisioner
 	p.bktUserPolicyArn = policyARN
-	glog.Infof("getPolicyARN %s for Account ID %s for Policy %s", policyARN, accountID, policyName)
+	glog.V(2).Infof("getPolicyARN %s for Account ID %s for Policy %s", policyARN, accountID, policyName)
 	return policyARN, nil
 }
 
@@ -201,7 +201,7 @@ func (p *awsS3Provisioner) getAccountID() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	glog.Infof("New User %s and AccountID %s", p.bktUserName, aws.StringValue(&arnData.AccountID))
+	glog.V(2).Infof("New User %s and AccountID %s", p.bktUserName, aws.StringValue(&arnData.AccountID))
 	return aws.StringValue(&arnData.AccountID), nil
 }
 
@@ -214,7 +214,7 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 		myuser = user
 		p.bktUserName = user
 	}
-	glog.Infof("in createIAM - user %s", myuser)
+	glog.V(2).Infof("in createIAM - user %s", myuser)
 
 	//Create IAM service (maybe this should be added into our default or obc session
 	//or create all services type of function?
@@ -244,13 +244,13 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 	glog.Infof("Successfully created Access Keys for user %s %v", myuser, aresult)
 	// print out successful result for testing
 	// and populate our receiver
-	glog.Infof("Summary of successful created iam user %s", myuser)
+	glog.V(2).Infof("Summary of successful created iam user %s", myuser)
 	myaccesskey := aws.StringValue(aresult.AccessKey.AccessKeyId)
 	p.bktUserAccessId = myaccesskey
-	glog.Infof("accessKey = %s", myaccesskey)
+	glog.V(2).Infof("accessKey = %s", myaccesskey)
 	mysecretaccesskey := aws.StringValue(aresult.AccessKey.SecretAccessKey)
 	p.bktUserSecretKey = mysecretaccesskey
-	glog.Infof("accessKey = %s", mysecretaccesskey)
+	glog.V(2).Infof("accessKey = %s", mysecretaccesskey)
 
 	return myaccesskey, mysecretaccesskey, nil
 }
@@ -262,8 +262,6 @@ func (p *awsS3Provisioner) setCreateBucketUserOptions(obc *v1alpha1.ObjectBucket
 	const (
 		scBucketUser = "createBucketUser"
 	)
-	//p.bktUserAccessId = ""
-	//p.bktUserSecretKey = ""
 
 	sc, err := p.getClassForBucketClaim(obc)
 	if err != nil {
@@ -275,12 +273,12 @@ func (p *awsS3Provisioner) setCreateBucketUserOptions(obc *v1alpha1.ObjectBucket
 	// get expected sc parameters containing region and secret
 	doCreateUser, ok := sc.Parameters[scBucketUser]
 	if !ok {
-		glog.Infof("setCreateBucketUserOptions - did not find StorageClass flag to create user %s - defaulting to create user", scBucketUser)
+		glog.V(2).Infof("setCreateBucketUserOptions - did not find StorageClass flag to create user %s - defaulting to create user", scBucketUser)
 		p.bktCreateUser = "yes"
 		return nil
 	}
 	if doCreateUser == "no" {
-		glog.Infof("setCreateBucketUserOptions - did find StorageClass flag to not create user %s", scBucketUser)
+		glog.V(2).Infof("setCreateBucketUserOptions - did find StorageClass flag to not create user %s", scBucketUser)
 		p.bktCreateUser = "no"
 		return nil
 	}
