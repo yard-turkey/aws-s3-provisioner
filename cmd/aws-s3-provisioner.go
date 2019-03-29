@@ -54,7 +54,7 @@ const (
 	regionInsert     = "<REGION>"
 	s3Hostname       = "s3-" + regionInsert + ".amazonaws.com"
 	s3BucketArn      = "arn:aws:s3:::%s"
-	policyArn  = "arn:aws:iam::%s:policy/%s"
+	policyArn        = "arn:aws:iam::%s:policy/%s"
 	createBucketUser = false
 )
 
@@ -65,15 +65,15 @@ var (
 
 type awsS3Provisioner struct {
 	bucketName string
-	region	   string
+	region     string
 	// session is the aws session
-	session	   *session.Session
-	// svc is the aws s3 service based on the session
-	svc	   *s3.S3
-	// iam client
-	iamservice *awsuser.IAM
+	session *session.Session
+	// s3svc is the aws s3 service based on the session
+	s3svc *s3.S3
+	// iam client service
+	iamsvc *awsuser.IAM
 	//kube client
-	clientset  *kubernetes.Clientset
+	clientset *kubernetes.Clientset
 	// access keys for aws acct for the bucket *owner*
 	bktOwnerAccessId  string
 	bktOwnerSecretKey string
@@ -128,7 +128,7 @@ func (p *awsS3Provisioner) createBucket(name string) error {
 		Bucket: &name,
 	}
 
-	_, err := p.svc.CreateBucket(bucketinput)
+	_, err := p.s3svc.CreateBucket(bucketinput)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -227,7 +227,7 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 	}
 
 	glog.V(2).Infof("Creating S3 service for OBC \"%s/%s\"", obc.Namespace, obc.Name)
-	p.svc = s3.New(p.session)
+	p.s3svc = s3.New(p.session)
 
 	// create the bucket
 	glog.Infof("Creating bucket %q", p.bucketName)
@@ -279,18 +279,18 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	}
 
 	bktName := ob.Spec.Endpoint.BucketName
-	iter := s3manager.NewDeleteListIterator(p.svc, &s3.ListObjectsInput{
+	iter := s3manager.NewDeleteListIterator(p.s3svc, &s3.ListObjectsInput{
 		Bucket: aws.String(bktName),
 	})
 
 	glog.V(2).Infof("Deleting all objects in bucket %q (from OB %q)", bktName, ob.Name)
-	err := s3manager.NewBatchDeleteWithClient(p.svc).Delete(aws.BackgroundContext(), iter)
+	err := s3manager.NewBatchDeleteWithClient(p.s3svc).Delete(aws.BackgroundContext(), iter)
 	if err != nil {
 		return fmt.Errorf("Error deleting objects from bucket %q: %v", bktName, err)
 	}
 
 	glog.V(2).Infof("Deleting empty bucket %q from OB %q", bktName, ob.Name)
-	_, err = p.svc.DeleteBucket(&s3.DeleteBucketInput{
+	_, err = p.s3svc.DeleteBucket(&s3.DeleteBucketInput{
 		Bucket: aws.String(bktName),
 	})
 	if err != nil {

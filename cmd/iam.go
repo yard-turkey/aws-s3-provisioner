@@ -68,7 +68,7 @@ func (p *awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (s
 	}
 
 	//Create the policy in aws for the user and bucket
-	_, err = p.createUserPolicy(p.iamservice, options.BucketName, policyDoc)
+	_, err = p.createUserPolicy(p.iamsvc, options.BucketName, policyDoc)
 	if err != nil {
 		//should we fail here or keep going?
 		glog.Errorf("error creating userPolicy for user %q on bucket %q: %v", p.bktUserName, options.BucketName, err)
@@ -86,7 +86,7 @@ func (p *awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (s
 }
 
 func (p *awsS3Provisioner) handleUserAndPolicyDeletion() error {
-	_, err := p.iamservice.DeletePolicy(&awsuser.DeletePolicyInput{PolicyArn: aws.String(p.bktUserPolicyArn)})
+	_, err := p.iamsvc.DeletePolicy(&awsuser.DeletePolicyInput{PolicyArn: aws.String(p.bktUserPolicyArn)})
 	if err != nil {
 		// Not sure we want to stop the deletion of the user or bucket at this point
 		// so just logging an error
@@ -94,7 +94,7 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion() error {
 	}
 
 	// Delete IAM User
-	_, err = p.iamservice.DeleteUser(&awsuser.DeleteUserInput{UserName: aws.String(p.bktUserName)})
+	_, err = p.iamsvc.DeleteUser(&awsuser.DeleteUserInput{UserName: aws.String(p.bktUserName)})
 	if err != nil {
 		// Not sure we want to stop the deletion of the user or bucket at this point
 		// so just logging an error
@@ -199,7 +199,7 @@ func (p *awsS3Provisioner) attachPolicyToUser(policyName string, username string
 		return err
 	}
 
-	_, err = p.iamservice.AttachUserPolicy(&awsuser.AttachUserPolicyInput{PolicyArn: aws.String(policyARN), UserName: aws.String(p.bktUserName)})
+	_, err = p.iamsvc.AttachUserPolicy(&awsuser.AttachUserPolicyInput{PolicyArn: aws.String(policyARN), UserName: aws.String(p.bktUserName)})
 	if err == nil {
 		glog.Infof("Successfully attached Policy %s to User %s", policyName, p.bktUserName)
 	}
@@ -209,7 +209,7 @@ func (p *awsS3Provisioner) attachPolicyToUser(policyName string, username string
 // getAccountID - Gets the accountID of the authenticated session.
 func (p *awsS3Provisioner) getAccountID() (string, error) {
 
-	user, err := p.iamservice.GetUser(&awsuser.GetUserInput{
+	user, err := p.iamsvc.GetUser(&awsuser.GetUserInput{
 		UserName: &p.bktUserName})
 	if err != nil {
 		glog.Errorf("Could not get new user %s", p.bktUserName)
@@ -241,7 +241,7 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 	//Create IAM service (maybe this should be added into our default or obc session
 	//or create all services type of function?
 	iamsvc := awsuser.New(p.session)
-	p.iamservice = iamsvc
+	p.iamsvc = iamsvc
 
 	//Create the new user
 	uresult, err := iamsvc.CreateUser(&awsuser.CreateUserInput{
