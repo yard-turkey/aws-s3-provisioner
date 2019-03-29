@@ -155,7 +155,7 @@ func (p *awsS3Provisioner) createBucket(name string) error {
 // Set in the receiver the session and region used to create the session.
 // Note: in error cases it's possible that the set region is different from
 //   the OBC's storage class's region.
-func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim, sc *storageV1.StorageClass) error {
+func (p *awsS3Provisioner) awsSessionFromStorageClass(sc *storageV1.StorageClass) error {
 
 	const scRegionKey = "region"
 
@@ -181,7 +181,7 @@ func (p *awsS3Provisioner) awsSessionFromOBC(obc *v1alpha1.ObjectBucketClaim, sc
 	// get the sc's bucket owner secret
 	err := p.credsFromSecret(p.clientset, secretNS, secretName)
 	if err != nil {
-		glog.Warningf("secret \"%s/%s\" in storage class %q for OBC %q is empty.\nUsing default credentials.", secretNS, secretName, sc.Name, obc.Name)
+		glog.Warningf("secret \"%s/%s\" in storage class %q for %q is empty.\nUsing default credentials.", secretNS, secretName, sc.Name, p.bucketName)
 		return errDefault()
 	}
 
@@ -211,7 +211,9 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 
 	// get the OBC and its storage class
 	obc := options.ObjectBucketClaim
-	sc, err := p.getClassForBucketClaim(obc)
+	scName := options.ObjectBucketClaim.Spec.StorageClassName
+	//sc, err := p.getClassForBucketClaim(obc)
+	sc, err := p.getClassByNameForBucket(scName)
 	if err != nil {
 		glog.Errorf("failed to get storage class %q for OBC %q: %v", obc.Spec.StorageClassName, obc.Name, err)
 		return nil, err
@@ -221,7 +223,7 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 	p.setCreateBucketUserOptions(obc, sc)
 
 	// set the aws session from the obc in the receiver
-	err = p.awsSessionFromOBC(obc, sc)
+	err = p.awsSessionFromStorageClass(sc)
 	if err != nil {
 		return nil, fmt.Errorf("error creating session from OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
 	}
@@ -269,22 +271,52 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 // Note: only called when the bucket's reclaim policy is "delete".
 func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 
+	// set the bucket name
+	glog.Infof("In Delete!")
+	if ob == nil {
+		glog.Infof("We have no OB")
+		return fmt.Errorf("we have a nil OB")
+	}
+	glog.Infof("OB %+v", ob)
+	bktName := ob.Spec.Endpoint.BucketName
+	scName := ob.Spec.StorageClassName
+	glog.Infof("bucket: %s SCName: %s", bktName, scName)
+
+
+	// get the OB and its storage class
+	sc, err := p.getClassByNameForBucket(scName)
+	if err != nil {
+		glog.Errorf("failed to get storage class %q for OB %q: %v", ob.Spec.StorageClassName, ob.Name, err)
+		return err
+	}
+
+	// set the aws session
+	err = p.awsSessionFromStorageClass(sc)
+	if err != nil {
+		return fmt.Errorf("error creating session from OB \"%s/%s\": %v", ob.Namespace, ob.Name, err)
+	}
+
+	glog.V(2).Infof("Creating S3 service for OB \"%s/%s\"", ob.Namespace, ob.Name)
+	p.s3svc = s3.New(p.session)
+
+
 	// Delete IAM Policy and User
-	erruser := p.handleUserAndPolicyDeletion()
+	erruser := p.handleUserAndPolicyDeletion(bktName)
 	if erruser != nil {
 		// We are currently only logging
 		// because if failure do not want to stop
 		// deletion of bucket
 		glog.Infof("Failed to delete Policy and/or User - manual clean up required")
+		//return fmt.Errorf("Error deleting Policy and/or User %v", err)
 	}
 
-	bktName := ob.Spec.Endpoint.BucketName
+	// Delete Bucket
 	iter := s3manager.NewDeleteListIterator(p.s3svc, &s3.ListObjectsInput{
 		Bucket: aws.String(bktName),
 	})
 
 	glog.V(2).Infof("Deleting all objects in bucket %q (from OB %q)", bktName, ob.Name)
-	err := s3manager.NewBatchDeleteWithClient(p.s3svc).Delete(aws.BackgroundContext(), iter)
+	err = s3manager.NewBatchDeleteWithClient(p.s3svc).Delete(aws.BackgroundContext(), iter)
 	if err != nil {
 		return fmt.Errorf("Error deleting objects from bucket %q: %v", bktName, err)
 	}
@@ -296,9 +328,12 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	if err != nil {
 		return fmt.Errorf("Error deleting empty bucket %q: %v", bktName, err)
 	}
-
 	glog.Infof("Deleted bucket %q from OB %q", bktName, ob.Name)
+
+
+
 	return nil
+
 }
 
 // create k8s config and client for the runtime-controller.
