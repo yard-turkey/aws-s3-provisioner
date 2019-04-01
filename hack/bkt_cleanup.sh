@@ -17,33 +17,31 @@ fi
 
 echo
 echo "Cleaning up for OBC \"$ns/obcName\"..."
-echo
-kubectl get obc -n=$ns $obcName
-(( $? != 0 )) && exit 1
 
-echo
-echo "delete secret $ns/$obcName..."
-# secret and cm have finalizers which need to be removed or commented
-if kubectl patch --type=merge secret -n=$ns $obcName -p '{"metadata":{"finalizers": [null]}}'; then
+# secret and cm have finalizers which need to be removed
+if kubectl get secret -n=$ns $obcName; then 
+   echo
+   echo "delete secret $ns/$obcName..."
+   kubectl patch --type=merge secret -n=$ns $obcName -p '{"metadata":{"finalizers": [null]}}' && \
    kubectl delete secret -n=$ns $obcName
    (( $? != 0 )) && ((errcnt++))
-else
-   ((errcnt++))
 fi
 
-echo
-echo "delete configmap $ns/$obcName..."
-if kubectl patch --type=merge cm -n=$ns $obcName -p '{"metadata":{"finalizers": [null]}}'; then
+if kubectl get cm -n=$ns $obcName; then
+   echo
+   echo "delete configmap $ns/$obcName..."
+   kubectl patch --type=merge cm -n=$ns $obcName -p '{"metadata":{"finalizers": [null]}}' && \
    kubectl delete cm -n=$ns $obcName
    (( $? != 0 )) && ((errcnt++))
-else
-   ((errcnt++))
 fi
 
-echo
-echo "delete ob obc-$ns-$obcName..."
-kubectl delete ob "obc-$ns-$obcName"
-(( $? != 0 )) && ((errcnt++))
+ob="obc-$ns-$obcName"
+if kubectl get ob $ob; then
+   echo
+   echo "delete ob $ob..."
+   kubectl delete ob "$ob"
+   (( $? != 0 )) && ((errcnt++))
+fi
 
 echo
 echo "end of cleanup with $errcnt errors"
