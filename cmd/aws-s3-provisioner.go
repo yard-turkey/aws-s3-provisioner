@@ -39,7 +39,6 @@ import (
 	bkterr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
 
 	storageV1 "k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
