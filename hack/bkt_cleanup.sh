@@ -18,6 +18,13 @@ fi
 echo
 echo "Cleaning up for OBC \"$ns/obcName\"..."
 
+if kubectl get obc -n=$ns $obcNamel; then
+   echo
+   echo "delete obc $ns/$obcName..."
+   kubectl delete obc -n=$ns $obcName
+   (( $? != 0 )) && ((errcnt++))
+fi
+
 # secret and cm have finalizers which need to be removed
 if kubectl get secret -n=$ns $obcName; then 
    echo
