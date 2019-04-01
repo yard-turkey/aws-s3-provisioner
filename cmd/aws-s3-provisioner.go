@@ -103,37 +103,14 @@ func awsDefaultSession() (*session.Session, error) {
 }
 
 // Return the OB struct with minimal fields filled in.
-func (p *awsS3Provisioner) rtnObjectBkt(name string) *v1alpha1.ObjectBucket {
+func (p *awsS3Provisioner) rtnObjectBkt(bktName string) *v1alpha1.ObjectBucket {
 
 	host := strings.Replace(s3Hostname, regionInsert, p.region, 1)
-//ep := v1alpha1.Endpoint{
-		//BucketHost: host,
-		//BucketPort: httpsPort,
-		//BucketName: name,
-		//Region:     p.region,
-		//SSL:        true,
-//}
-
-//auth := v1alpha1.Authentication{
-		//AccessKeys: &v1alpha1.AccessKeys{
-			//AccessKeyId:     p.bktUserAccessId,
-			//SecretAccessKey: p.bktUserSecretKey,
-		//},
-//}
-//conn := &v1alpha1.Connection{
-	//Endpoint: &ep,
-	//Authentication: &auth,
-	//AdditionalState: map[string]string{
-		//obStateARN: p.bktUserPolicyArn,
-	//},
-//}
-//glog.Infof("=====DEBUG====* ep=%+v, auth=%+v, conn=%+v", ep, auth, conn)
-
 	conn := &v1alpha1.Connection{
 		Endpoint: &v1alpha1.Endpoint{
 			BucketHost: host,
 			BucketPort: httpsPort,
-			BucketName: name,
+			BucketName: bktName,
 			Region:     p.region,
 			SSL:        true,
 		},
@@ -147,26 +124,18 @@ func (p *awsS3Provisioner) rtnObjectBkt(name string) *v1alpha1.ObjectBucket {
 			obStateARN: p.bktUserPolicyArn,
 		},
 	}
-//glog.Infof("=====DEBUG====* host=%q, conn=%+v", host, conn)
 
 	return &v1alpha1.ObjectBucket{
-		//TypeMeta: metav1.TypeMeta{
-			//Kind: "ObjectBucket",
-			//APIVersion: "v1alpha1",
-		//},
-		//ObjectMeta: metav1.ObjectMeta{
-			//Name: "jeff-debugging-ob",
-		//},
 		Spec: v1alpha1.ObjectBucketSpec{
 			Connection: conn,
 		},
 	}
 }
 
-func (p *awsS3Provisioner) createBucket(name string) error {
+func (p *awsS3Provisioner) createBucket(bktName string) error {
 
 	bucketinput := &s3.CreateBucketInput{
-		Bucket: &name,
+		Bucket: &bktName,
 	}
 
 	_, err := p.s3svc.CreateBucket(bucketinput)
@@ -174,18 +143,18 @@ func (p *awsS3Provisioner) createBucket(name string) error {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case s3.ErrCodeBucketAlreadyExists:
-				msg := fmt.Sprintf("Bucket %q already exists", name)
+				msg := fmt.Sprintf("Bucket %q already exists", bktName)
 				glog.Errorf(msg)
 				return bkterr.NewBucketExistsError(msg)
 			case s3.ErrCodeBucketAlreadyOwnedByYou:
-				msg := fmt.Sprintf("Bucket %q already owned by you", name)
+				msg := fmt.Sprintf("Bucket %q already owned by you", bktName)
 				glog.Errorf(msg)
 				return bkterr.NewBucketExistsError(msg)
 			}
 		}
-		return fmt.Errorf("Bucket %q could not be created: %v", name, err)
+		return fmt.Errorf("Bucket %q could not be created: %v", bktName, err)
 	}
-	glog.Infof("Bucket %s successfully created", name)
+	glog.Infof("Bucket %s successfully created", bktName)
 
 	//Now at this point, we have a bucket and an owner
 	//we should now create the user for the bucket

@@ -109,7 +109,7 @@ github.com/prometheus/procfs/xfs
 github.com/prometheus/procfs/internal/util
 # github.com/spf13/pflag v1.0.3
 github.com/spf13/pflag
-# github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190401160829-215e7a53679f
+# github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190401192245-18d8e83b764a
 github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api
