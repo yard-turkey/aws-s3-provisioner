@@ -87,7 +87,7 @@ func (p *awsS3Provisioner) credsFromSecret(c *kubernetes.Clientset, ns, name str
 	secret, err := c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
 		// TODO: some kind of exponential backoff and retry...
-		return fmt.Errorf("unable to get Secret \"%s/%s\" with error %v", ns, name, err)
+		return fmt.Errorf("unable to get Secret \"%s/%s\": %v", ns, name, err)
 	}
 
 	accessKeyId := string(secret.Data[v1alpha1.AwsKeyField])

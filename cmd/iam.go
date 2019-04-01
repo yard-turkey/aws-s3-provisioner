@@ -87,33 +87,32 @@ func (p *awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (s
 
 func (p *awsS3Provisioner) handleUserAndPolicyDeletion(name string) error {
 
-	//TODO we need to store and retrieve policyArn - now using hardcoded tmpArn
 	glog.Infof("In handleUserandPolicyDeletion")
 	iamsvc := awsuser.New(p.session)
 	p.iamsvc = iamsvc
-	tmpArn := "arn:aws:iam::939345161466:policy/screeley-provb-5"
+	arn := p.bktUserPolicyArn
 
-	glog.Infof("about to delete policy %s", tmpArn)
+	glog.Infof("about to delete policy %s", arn)
 
 	// Detach Policy
-	_, err := p.iamsvc.DetachUserPolicy((&awsuser.DetachUserPolicyInput{PolicyArn: aws.String(tmpArn),UserName: aws.String(name)}))
+	_, err := p.iamsvc.DetachUserPolicy((&awsuser.DetachUserPolicyInput{PolicyArn: aws.String(arn),UserName: aws.String(name)}))
 	if err != nil {
 		// Not sure we want to stop the deletion of the user or bucket at this point
 		// so just logging an error
-		glog.Errorf("Error detaching User Policy %s %v", tmpArn, err)
+		glog.Errorf("Error detaching User Policy %s %v", arn, err)
 		return err
 	}
-	glog.Infof("successfully detached policy %s", tmpArn)
+	glog.Infof("successfully detached policy %s", arn)
 
 	// Delete Policy
-	_, err = p.iamsvc.DeletePolicy(&awsuser.DeletePolicyInput{PolicyArn: aws.String(tmpArn)})
+	_, err = p.iamsvc.DeletePolicy(&awsuser.DeletePolicyInput{PolicyArn: aws.String(arn)})
 	if err != nil {
 		// Not sure we want to stop the deletion of the user or bucket at this point
 		// so just logging an error
-		glog.Errorf("Error deleting User Policy %s %v", tmpArn, err)
+		glog.Errorf("Error deleting User Policy %s %v", arn, err)
 		return err
 	}
-	glog.Infof("successfully deleted policy %s", tmpArn)
+	glog.Infof("successfully deleted policy %s", arn)
 
 	// Delete AccessKeys
 	accessKeyId, err := p.getAccessKey(name)
@@ -126,7 +125,7 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion(name string) error {
 			glog.Errorf("Error deleting access key for user %s %v", name, err)
 			return err
 		}
-		glog.Infof("successfully deleted policy %s", tmpArn)
+		glog.Infof("successfully deleted policy %s", arn)
 	}
 
 	// Delete IAM User
@@ -146,6 +145,7 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion(name string) error {
 func (p *awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOptions) (string, error) {
 
 	bucketARN := fmt.Sprintf(s3BucketArn, options.BucketName)
+	p.bktUserPolicyArn = bucketARN
 	glog.V(2).Infof("createBucketPolicyDocument - bucketARN = %s", bucketARN)
 
 	read := StatementEntry{
