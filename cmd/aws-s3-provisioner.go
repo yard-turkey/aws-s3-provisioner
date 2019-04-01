@@ -39,6 +39,7 @@ import (
 	bkterr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
 
 	storageV1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -56,6 +57,7 @@ const (
 	s3BucketArn      = "arn:aws:s3:::%s"
 	policyArn        = "arn:aws:iam::%s:policy/%s"
 	createBucketUser = false
+	obStateARN	 = "ARN"
 )
 
 var (
@@ -67,13 +69,13 @@ type awsS3Provisioner struct {
 	bucketName string
 	region     string
 	// session is the aws session
-	session *session.Session
+	session	   *session.Session
 	// s3svc is the aws s3 service based on the session
-	s3svc *s3.S3
+	s3svc	   *s3.S3
 	// iam client service
-	iamsvc *awsuser.IAM
+	iamsvc	   *awsuser.IAM
 	//kube client
-	clientset *kubernetes.Clientset
+	clientset  *kubernetes.Clientset
 	// access keys for aws acct for the bucket *owner*
 	bktOwnerAccessId  string
 	bktOwnerSecretKey string
@@ -87,8 +89,8 @@ type awsS3Provisioner struct {
 
 func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) *libbkt.ProvisionerController {
 
-	opts := &libbkt.ProvisionerOptions{}
-	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, opts)
+	libCfg := &libbkt.Config{}
+	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, libCfg)
 }
 
 // Return the aws default session.
@@ -101,23 +103,63 @@ func awsDefaultSession() (*session.Session, error) {
 	})
 }
 
-// Return the connection record.
-func (p *awsS3Provisioner) createConnection(name string) *v1alpha1.Connection {
+// Return the OB struct with minimal fields filled in.
+func (p *awsS3Provisioner) rtnObjectBkt(name string) *v1alpha1.ObjectBucket {
 
 	host := strings.Replace(s3Hostname, regionInsert, p.region, 1)
-	return &v1alpha1.Connection{
-		&v1alpha1.Endpoint{
+//ep := v1alpha1.Endpoint{
+		//BucketHost: host,
+		//BucketPort: httpsPort,
+		//BucketName: name,
+		//Region:     p.region,
+		//SSL:        true,
+//}
+
+//auth := v1alpha1.Authentication{
+		//AccessKeys: &v1alpha1.AccessKeys{
+			//AccessKeyId:     p.bktUserAccessId,
+			//SecretAccessKey: p.bktUserSecretKey,
+		//},
+//}
+//conn := &v1alpha1.Connection{
+	//Endpoint: &ep,
+	//Authentication: &auth,
+	//AdditionalState: map[string]string{
+		//obStateARN: p.bktUserPolicyArn,
+	//},
+//}
+//glog.Infof("=====DEBUG====* ep=%+v, auth=%+v, conn=%+v", ep, auth, conn)
+
+	conn := &v1alpha1.Connection{
+		Endpoint: &v1alpha1.Endpoint{
 			BucketHost: host,
 			BucketPort: httpsPort,
 			BucketName: name,
 			Region:     p.region,
 			SSL:        true,
 		},
-		&v1alpha1.Authentication{
-			&v1alpha1.AccessKeys{
+		Authentication: &v1alpha1.Authentication{
+			AccessKeys: &v1alpha1.AccessKeys{
 				AccessKeyId:     p.bktUserAccessId,
 				SecretAccessKey: p.bktUserSecretKey,
 			},
+		},
+		AdditionalState: map[string]string{
+			obStateARN: p.bktUserPolicyArn,
+		},
+	}
+//glog.Infof("=====DEBUG====* host=%q, conn=%+v", host, conn)
+
+	return &v1alpha1.ObjectBucket{
+		//TypeMeta: metav1.TypeMeta{
+			//Kind: "ObjectBucket",
+			//APIVersion: "v1alpha1",
+		//},
+		//ObjectMeta: metav1.ObjectMeta{
+			//Name: "jeff-debugging-ob",
+		//},
+		Spec: v1alpha1.ObjectBucketSpec{
+			Connection: conn,
 		},
 	}
 }
@@ -204,7 +246,7 @@ func (p *awsS3Provisioner) awsSessionFromStorageClass(sc *storageV1.StorageClass
 //   alternative (arguably better) would be for all supporting methods
 //   to take value receivers and functionally return back to `Provision`
 //   receiver fields they need set. The first approach is easier for now.
-func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Connection, error) {
+func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.ObjectBucket, error) {
 
 	// set the bucket name
 	p.bucketName = options.BucketName
@@ -264,23 +306,18 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Co
 	}
 
 	// returned connection info
-	return p.createConnection(p.bucketName), nil
+	return p.rtnObjectBkt(p.bucketName), nil
 }
 
 // Delete the bucket and all its objects.
 // Note: only called when the bucket's reclaim policy is "delete".
 func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 
-	// set the bucket name
-	glog.Infof("In Delete!")
-	if ob == nil {
-		glog.Infof("We have no OB")
-		return fmt.Errorf("we have a nil OB")
-	}
-	glog.Infof("OB %+v", ob)
-	bktName := ob.Spec.Endpoint.BucketName
+	// set receiver fields from OB data
+	p.bucketName = ob.Spec.Endpoint.BucketName
+	p.bktUserPolicyArn = ob.Spec.AdditionalState[obStateARN]
 	scName := ob.Spec.StorageClassName
-	glog.Infof("bucket: %s SCName: %s", bktName, scName)
+	glog.Infof("Deleting bucket %q for OB %q", p.bucketName, ob.Name)
 
 
 	// get the OB and its storage class
@@ -301,7 +338,7 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 
 
 	// Delete IAM Policy and User
-	erruser := p.handleUserAndPolicyDeletion(bktName)
+	erruser := p.handleUserAndPolicyDeletion(p.bucketName)
 	if erruser != nil {
 		// We are currently only logging
 		// because if failure do not want to stop
@@ -312,23 +349,23 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 
 	// Delete Bucket
 	iter := s3manager.NewDeleteListIterator(p.s3svc, &s3.ListObjectsInput{
-		Bucket: aws.String(bktName),
+		Bucket: aws.String(p.bucketName),
 	})
 
-	glog.V(2).Infof("Deleting all objects in bucket %q (from OB %q)", bktName, ob.Name)
+	glog.V(2).Infof("Deleting all objects in bucket %q (from OB %q)", p.bucketName, ob.Name)
 	err = s3manager.NewBatchDeleteWithClient(p.s3svc).Delete(aws.BackgroundContext(), iter)
 	if err != nil {
-		return fmt.Errorf("Error deleting objects from bucket %q: %v", bktName, err)
+		return fmt.Errorf("Error deleting objects from bucket %q: %v", p.bucketName, err)
 	}
 
-	glog.V(2).Infof("Deleting empty bucket %q from OB %q", bktName, ob.Name)
+	glog.V(2).Infof("Deleting empty bucket %q from OB %q", p.bucketName, ob.Name)
 	_, err = p.s3svc.DeleteBucket(&s3.DeleteBucketInput{
-		Bucket: aws.String(bktName),
+		Bucket: aws.String(p.bucketName),
 	})
 	if err != nil {
-		return fmt.Errorf("Error deleting empty bucket %q: %v", bktName, err)
+		return fmt.Errorf("Error deleting empty bucket %q: %v", p.bucketName, err)
 	}
-	glog.Infof("Deleted bucket %q from OB %q", bktName, ob.Name)
+	glog.Infof("Deleted bucket %q from OB %q", p.bucketName, ob.Name)
 
 
 
