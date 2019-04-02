@@ -216,7 +216,7 @@ func (p *awsS3Provisioner) setSessionAndService(sc *storageV1.StorageClass) erro
 	}
 
 	glog.V(2).Infof("Creating S3 service based on storageclass %q", sc.Name)
-	p.s3svc := s3.New(p.session)
+	p.s3svc = s3.New(p.session)
 	if p.s3svc == nil {
 		return fmt.Errorf("error creating S3 service: %v", err)
 	}
