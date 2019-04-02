@@ -196,7 +196,7 @@ func (p *awsS3Provisioner) awsSessionFromStorageClass(sc *storageV1.StorageClass
 	}
 
 	// use the OBC's SC to create our session, set receiver fields
-	glog.V(2).Infof("Creating aws session using credentials from storage class %s's secret", sc.Name)
+	glog.V(2).Infof("Creating AWS session using credentials from storage class %s's secret", sc.Name)
 	p.region = region
 	p.session, err = session.NewSession(&aws.Config{
 		Region:      aws.String(region),
@@ -204,6 +204,24 @@ func (p *awsS3Provisioner) awsSessionFromStorageClass(sc *storageV1.StorageClass
 	})
 
 	return err
+}
+
+// Create the AWS session and S3 service and store them to the receiver.
+func (p *awsS3Provisioner) setSessionAndService(sc *storageV1.StorageClass) error {
+	// set the aws session
+	glog.V(2).Infof("Creating AWS session based on storageclass %q", sc.Name)
+	err := p.awsSessionFromStorageClass(sc)
+	if err != nil {
+		return fmt.Errorf("error creating AWS session: %v", err)
+	}
+
+	glog.V(2).Infof("Creating S3 service based on storageclass %q", sc.Name)
+	p.s3svc := s3.New(p.session)
+	if p.s3svc == nil {
+		return fmt.Errorf("error creating S3 service: %v", err)
+	}
+
+	return nil
 }
 
 // Provision creates an aws s3 bucket and returns a connection info
@@ -222,24 +240,20 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Ob
 	// get the OBC and its storage class
 	obc := options.ObjectBucketClaim
 	scName := options.ObjectBucketClaim.Spec.StorageClassName
-	//sc, err := p.getClassForBucketClaim(obc)
 	sc, err := p.getClassByNameForBucket(scName)
 	if err != nil {
-		glog.Errorf("failed to get storage class %q for OBC %q: %v", obc.Spec.StorageClassName, obc.Name, err)
+		glog.Errorf("failed to get storage class for OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
 		return nil, err
 	}
 
 	// check for bkt user access policy vs. bkt owner policy based on SC
 	p.setCreateBucketUserOptions(obc, sc)
 
-	// set the aws session from the obc in the receiver
-	err = p.awsSessionFromStorageClass(sc)
+	// set the aws session and s3 service from the storage class
+	err = p.setSessionAndService(sc)
 	if err != nil {
-		return nil, fmt.Errorf("error creating session from OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
+		return nil, fmt.Errorf("error using OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
 	}
-
-	glog.V(2).Infof("Creating S3 service for OBC \"%s/%s\"", obc.Namespace, obc.Name)
-	p.s3svc = s3.New(p.session)
 
 	// create the bucket
 	glog.Infof("Creating bucket %q", p.bucketName)
@@ -261,7 +275,7 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Ob
 		p.bktUserName = p.bucketName
 
 		// handle all iam and policy operations
-		uAccess, uKey, err := p.handleUserAndPolicy(options)
+		uAccess, uKey, err := p.handleUserAndPolicy(p.bucketName)
 		if err != nil || uAccess == "" || uKey == "" {
 			//what to do - something failed along the way
 			//do we fall back and create our connection with
@@ -291,23 +305,18 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	// get the OB and its storage class
 	sc, err := p.getClassByNameForBucket(scName)
 	if err != nil {
-		glog.Errorf("failed to get storage class %q for OB %q: %v", ob.Spec.StorageClassName, ob.Name, err)
-		return err
+		return fmt.Errorf("failed to get storage class for OB %q: %v", ob.Name, err)
 	}
 
-	// set the aws session
-	err = p.awsSessionFromStorageClass(sc)
+	// set the aws session and s3 service from the storage class
+	err = p.setSessionAndService(sc)
 	if err != nil {
-		return fmt.Errorf("error creating session from OB \"%s/%s\": %v", ob.Namespace, ob.Name, err)
+		return fmt.Errorf("error using OB %q: %v", ob.Name, err)
 	}
-
-	glog.V(2).Infof("Creating S3 service for OB \"%s/%s\"", ob.Namespace, ob.Name)
-	p.s3svc = s3.New(p.session)
-
 
 	// Delete IAM Policy and User
-	erruser := p.handleUserAndPolicyDeletion(p.bucketName)
-	if erruser != nil {
+	err = p.handleUserAndPolicyDeletion(p.bucketName)
+	if err != nil {
 		// We are currently only logging
 		// because if failure do not want to stop
 		// deletion of bucket

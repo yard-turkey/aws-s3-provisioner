@@ -26,7 +26,6 @@ import (
 	awsuser "github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	apibkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 	storageV1 "k8s.io/api/storage/v1"
 )
 
@@ -46,12 +45,15 @@ type StatementEntry struct {
 
 // Handle Policy and User Creation when flag is set.
 // Note: new user name is the same as the bucket name.
-func (p *awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (string, string, error) {
+func (p *awsS3Provisioner) handleUserAndPolicy(bktName string) (string, string, error) {
+
+	glog.V(2).Infof("creating user and policy for bucket %q", bktName)
 
 	userAccessId, userSecretKey, err := p.createIAMUser("")
+	uname := p.bktUserName
 	if err != nil {
 		//should we fail here or keep going?
-		glog.Errorf("error creating IAM user %s: %v", options.BucketName, err)
+		glog.Errorf("error creating IAM user %q: %v", uname, err)
 		return "", "", err
 	}
 
@@ -59,43 +61,42 @@ func (p *awsS3Provisioner) handleUserAndPolicy(options *apibkt.BucketOptions) (s
 	//if createBucket was successful
 	//might change the input param into this function, we need bucketName
 	//and maybe accessPerms (read, write, read/write)
-	policyDoc, err := p.createBucketPolicyDocument(options)
+	policyDoc, err := p.createBucketPolicyDocument(uname)
 	if err != nil {
 		//We did get our user created, but not our policy doc
 		//I'm going to pass back our user for now
-		glog.Errorf("error creating policyDoc %s: %v", options.BucketName, err)
+		glog.Errorf("error creating policyDoc %s: %v", bktName, err)
 		return userAccessId, userSecretKey, err
 	}
 
 	//Create the policy in aws for the user and bucket
-	_, err = p.createUserPolicy(p.iamsvc, options.BucketName, policyDoc)
+	_, err = p.createUserPolicy(p.iamsvc, bktName, policyDoc)
 	if err != nil {
 		//should we fail here or keep going?
-		glog.Errorf("error creating userPolicy for user %q on bucket %q: %v", p.bktUserName, options.BucketName, err)
+		glog.Errorf("error creating userPolicy for user %q on bucket %q: %v", uname, bktName, err)
 		return userAccessId, userSecretKey, err
 	}
 
 	//attach policy to user
-	err = p.attachPolicyToUser(options.BucketName, p.bktUserName)
+	err = p.attachPolicyToUser(bktName, uname)
 	if err != nil {
-		glog.Errorf("error attaching userPolicy for user %q on bucket %q: %v", p.bktUserName, options.BucketName, err)
+		glog.Errorf("error attaching userPolicy for user %q on bucket %q: %v", uname, bktName, err)
 		return userAccessId, userSecretKey, err
 	}
 
 	return userAccessId, userSecretKey, nil
 }
 
-func (p *awsS3Provisioner) handleUserAndPolicyDeletion(name string) error {
+func (p *awsS3Provisioner) handleUserAndPolicyDeletion(bktName string) error {
 
-	glog.Infof("In handleUserandPolicyDeletion")
-	iamsvc := awsuser.New(p.session)
-	p.iamsvc = iamsvc
+	glog.V(2).Infof("deleting user and policy for bucket %q", bktName)
+
+	uname := bktName // provisioner user name convention
+	p.iamsvc = awsuser.New(p.session)
 	arn := p.bktUserPolicyArn
 
-	glog.Infof("about to delete policy %s", arn)
-
 	// Detach Policy
-	_, err := p.iamsvc.DetachUserPolicy((&awsuser.DetachUserPolicyInput{PolicyArn: aws.String(arn),UserName: aws.String(name)}))
+	_, err := p.iamsvc.DetachUserPolicy((&awsuser.DetachUserPolicyInput{PolicyArn: aws.String(arn), UserName: aws.String(uname)}))
 	if err != nil {
 		// Not sure we want to stop the deletion of the user or bucket at this point
 		// so just logging an error
@@ -115,26 +116,26 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion(name string) error {
 	glog.Infof("successfully deleted policy %s", arn)
 
 	// Delete AccessKeys
-	accessKeyId, err := p.getAccessKey(name)
+	accessKeyId, err := p.getAccessKey(uname)
 	if len(accessKeyId) != 0 {
 		glog.Infof("access key id is %s", accessKeyId)
-		_, err = p.iamsvc.DeleteAccessKey(&awsuser.DeleteAccessKeyInput{AccessKeyId: aws.String(accessKeyId),UserName: aws.String(name)})
+		_, err = p.iamsvc.DeleteAccessKey(&awsuser.DeleteAccessKeyInput{AccessKeyId: aws.String(accessKeyId),UserName: aws.String(uname)})
 		if err != nil {
 			// Not sure we want to stop the deletion of the user or bucket at this point
 			// so just logging an error
-			glog.Errorf("Error deleting access key for user %s %v", name, err)
+			glog.Errorf("Error deleting access key for user %s %v", uname, err)
 			return err
 		}
 		glog.Infof("successfully deleted policy %s", arn)
 	}
 
 	// Delete IAM User
-	glog.Infof("Deleting User %s", name)
-	_, err = p.iamsvc.DeleteUser(&awsuser.DeleteUserInput{UserName: aws.String(name)})
+	glog.Infof("Deleting User %s", uname)
+	_, err = p.iamsvc.DeleteUser(&awsuser.DeleteUserInput{UserName: aws.String(uname)})
 	if err != nil {
 		// Not sure we want to stop the deletion of the user or bucket at this point
 		// so just logging an error
-		glog.Errorf("Error deleting User %s %v", name, err)
+		glog.Errorf("Error deleting User %s %v", uname, err)
 		return err
 	}
 
@@ -142,11 +143,11 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion(name string) error {
 	return err
 }
 
-func (p *awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOptions) (string, error) {
+func (p *awsS3Provisioner) createBucketPolicyDocument(bktName string) (string, error) {
 
-	bucketARN := fmt.Sprintf(s3BucketArn, options.BucketName)
-	p.bktUserPolicyArn = bucketARN
-	glog.V(2).Infof("createBucketPolicyDocument - bucketARN = %s", bucketARN)
+	arn := fmt.Sprintf(s3BucketArn, bktName)
+	p.bktUserPolicyArn = arn
+	glog.V(2).Infof("createBucketPolicyDocument for bucket %q and ARN %q", bktName, arn)
 
 	read := StatementEntry{
 		Sid:    "s3Read",
@@ -155,7 +156,7 @@ func (p *awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOpti
 			"s3:Get*",
 			"s3:List*",
 		},
-		Resource: []string{bucketARN + "/*"},
+		Resource: []string{arn + "/*"},
 	}
 	write := StatementEntry{
 		Sid:    "s3Write",
@@ -164,7 +165,7 @@ func (p *awsS3Provisioner) createBucketPolicyDocument(options *apibkt.BucketOpti
 			"s3:DeleteObject",
 			"s3:Put*",
 		},
-		Resource: []string{bucketARN + "/*"},
+		Resource: []string{arn + "/*"},
 	}
 
 	policy := PolicyDocument{
@@ -292,15 +293,14 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 		myuser = p.bucketName
 	}
 	p.bktUserName = myuser
-	glog.V(2).Infof("in createIAM - user %s", myuser)
+	glog.V(2).Infof("creating IAM user %q", myuser)
 
 	//Create IAM service (maybe this should be added into our default or obc session
 	//or create all services type of function?
-	iamsvc := awsuser.New(p.session)
-	p.iamsvc = iamsvc
+	p.iamsvc = awsuser.New(p.session)
 
 	//Create the new user
-	uresult, err := iamsvc.CreateUser(&awsuser.CreateUserInput{
+	uresult, err := p.iamsvc.CreateUser(&awsuser.CreateUserInput{
 		UserName: &myuser,
 	})
 	if err != nil {
@@ -312,7 +312,7 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 	glog.V(2).Infof("Successfully created iam user %v", uresult)
 
 	//Create the Access Keys for the new user
-	aresult, err := iamsvc.CreateAccessKey(&awsuser.CreateAccessKeyInput{
+	aresult, err := p.iamsvc.CreateAccessKey(&awsuser.CreateAccessKeyInput{
 		UserName: &myuser,
 	})
 	if err != nil {
