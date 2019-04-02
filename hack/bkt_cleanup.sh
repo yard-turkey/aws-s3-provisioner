@@ -18,7 +18,7 @@ fi
 echo
 echo "Cleaning up for OBC \"$ns/obcName\"..."
 
-if kubectl get obc -n=$ns $obcNamel; then
+if kubectl get obc -n=$ns $obcName; then
    echo
    echo "delete obc $ns/$obcName..."
    kubectl delete obc -n=$ns $obcName
