@@ -61,7 +61,8 @@ func (p *awsS3Provisioner) handleUserAndPolicy(bktName string) (string, string, 
 	//if createBucket was successful
 	//might change the input param into this function, we need bucketName
 	//and maybe accessPerms (read, write, read/write)
-	policyDoc, err := p.createBucketPolicyDocument(uname)
+	//policyDoc, err := p.createBucketPolicyDocument(uname)
+	policyDoc, err := p.createBucketPolicyDocument(bktName)
 	if err != nil {
 		//We did get our user created, but not our policy doc
 		//I'm going to pass back our user for now
@@ -69,16 +70,17 @@ func (p *awsS3Provisioner) handleUserAndPolicy(bktName string) (string, string, 
 		return userAccessId, userSecretKey, err
 	}
 
-	//Create the policy in aws for the user and bucket
-	_, err = p.createUserPolicy(p.iamsvc, bktName, policyDoc)
+	// Create the policy in aws for the user and bucket
+	// policyName is same as username
+	_, err = p.createUserPolicy(p.iamsvc, uname, policyDoc)
 	if err != nil {
 		//should we fail here or keep going?
 		glog.Errorf("error creating userPolicy for user %q on bucket %q: %v", uname, bktName, err)
 		return userAccessId, userSecretKey, err
 	}
 
-	//attach policy to user
-	err = p.attachPolicyToUser(bktName, uname)
+	//attach policy to user - policyName and username are same
+	err = p.attachPolicyToUser(uname)
 	if err != nil {
 		glog.Errorf("error attaching userPolicy for user %q on bucket %q: %v", uname, bktName, err)
 		return userAccessId, userSecretKey, err
@@ -91,7 +93,7 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion(bktName string) error {
 
 	glog.V(2).Infof("deleting user and policy for bucket %q", bktName)
 
-	uname := bktName // provisioner user name convention
+	uname := p.bktUserName
 	p.iamsvc = awsuser.New(p.session)
 	arn := p.bktUserPolicyArn
 
@@ -232,7 +234,7 @@ func (p *awsS3Provisioner) getPolicyARN(policyName string) (string, error) {
 	return policyARN, nil
 }
 
-func (p *awsS3Provisioner) attachPolicyToUser(policyName string, username string) error {
+func (p *awsS3Provisioner) attachPolicyToUser(policyName string) error {
 
 	policyARN, err := p.getPolicyARN(policyName)
 	if err != nil {
@@ -289,10 +291,6 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 	if len(myuser) == 0 {
 		myuser = p.bktUserName
 	}
-	if len(myuser) == 0 {
-		myuser = p.bucketName
-	}
-	p.bktUserName = myuser
 	glog.V(2).Infof("creating IAM user %q", myuser)
 
 	//Create IAM service (maybe this should be added into our default or obc session

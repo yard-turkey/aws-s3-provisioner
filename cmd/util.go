@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	_ "net/url"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
@@ -72,4 +73,22 @@ func (p *awsS3Provisioner) credsFromSecret(c *kubernetes.Clientset, ns, name str
 	p.bktOwnerAccessId = accessKeyId
 	p.bktOwnerSecretKey = secretKey
 	return nil
+}
+
+func randomString(n int) string {
+	var letterRunes = []rune("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
+}
+
+func createUserName(bkt string) string {
+	// prefix is bucket name
+	if len(bkt) > maxBucketLen  {
+		bkt = bkt[:(maxBucketLen-1)]
+	}
+	return fmt.Sprintf("%s-%s", bkt, randomString(genUserLen))
 }
