@@ -56,7 +56,12 @@ const (
 	s3BucketArn      = "arn:aws:s3:::%s"
 	policyArn        = "arn:aws:iam::%s:policy/%s"
 	createBucketUser = false
-	obStateARN	 = "ARN"
+	obStateARN	     = "ARN"
+	obStateUser      = "UserName"
+	maxBucketLen     = 58
+	maxUserLen       = 63
+	genUserLen       = 5
+
 )
 
 var (
@@ -122,6 +127,7 @@ func (p *awsS3Provisioner) rtnObjectBkt(bktName string) *v1alpha1.ObjectBucket {
 		},
 		AdditionalState: map[string]string{
 			obStateARN: p.bktUserPolicyArn,
+			obStateUser: p.bktUserName,
 		},
 	}
 
@@ -224,16 +230,8 @@ func (p *awsS3Provisioner) setSessionAndService(sc *storageV1.StorageClass) erro
 	return nil
 }
 
-// Provision creates an aws s3 bucket and returns a connection info
-// representing the bucket's endpoint and user access credentials.
-// Programming Note: _all_ methods on "awsS3Provisioner" called directly
-//   or indirectly by `Provision` should use pointer receivers. This allows
-//   all supporting methods to set receiver fields where convenient. An
-//   alternative (arguably better) would be for all supporting methods
-//   to take value receivers and functionally return back to `Provision`
-//   receiver fields they need set. The first approach is easier for now.
-func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.ObjectBucket, error) {
-
+func (p *awsS3Provisioner) initializeCreateOrGrant(options *apibkt.BucketOptions) error {
+	glog.V(2).Infof("initializing and setting CreateOrGrant services")
 	// set the bucket name
 	p.bucketName = options.BucketName
 
@@ -243,7 +241,7 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Ob
 	sc, err := p.getClassByNameForBucket(scName)
 	if err != nil {
 		glog.Errorf("failed to get storage class for OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
-		return nil, err
+		return err
 	}
 
 	// check for bkt user access policy vs. bkt owner policy based on SC
@@ -252,19 +250,13 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Ob
 	// set the aws session and s3 service from the storage class
 	err = p.setSessionAndService(sc)
 	if err != nil {
-		return nil, fmt.Errorf("error using OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
+		return fmt.Errorf("error using OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
 	}
 
-	// create the bucket
-	glog.Infof("Creating bucket %q", p.bucketName)
-	err = p.createBucket(p.bucketName)
-	if err != nil {
-		err = fmt.Errorf("error creating bucket %q: %v", p.bucketName, err)
-		glog.Errorf(err.Error())
-		return nil, err
-	}
+	return nil
+}
 
-	// createBucket was successful, deal with user and policy
+func (p *awsS3Provisioner) initializeUserAndPolicy() error {
 	// TODO: default access and key are set to bkt owner.
 	//   This needs to be more restrictive or a failure...
 	p.bktUserAccessId = p.bktOwnerAccessId
@@ -272,7 +264,7 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Ob
 	if p.bktCreateUser == "yes" {
 		// Create a new IAM user using the name of the bucket and set
 		// access and attach policy for bucket and user
-		p.bktUserName = p.bucketName
+		p.bktUserName = createUserName(p.bucketName)
 
 		// handle all iam and policy operations
 		uAccess, uKey, err := p.handleUserAndPolicy(p.bucketName)
@@ -286,8 +278,65 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Ob
 			p.bktUserSecretKey = uKey
 		}
 	}
+	return nil
+}
 
-	// returned connection info
+// Provision creates an aws s3 bucket and returns a connection info
+// representing the bucket's endpoint and user access credentials.
+// Programming Note: _all_ methods on "awsS3Provisioner" called directly
+//   or indirectly by `Provision` should use pointer receivers. This allows
+//   all supporting methods to set receiver fields where convenient. An
+//   alternative (arguably better) would be for all supporting methods
+//   to take value receivers and functionally return back to `Provision`
+//   receiver fields they need set. The first approach is easier for now.
+func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.ObjectBucket, error) {
+
+	// initialize and set the AWS services and commonly used variables
+	err := p.initializeCreateOrGrant(options)
+	if err != nil {
+		return nil, err
+	}
+
+	// create the bucket
+	glog.Infof("Creating bucket %q", p.bucketName)
+	err = p.createBucket(p.bucketName)
+	if err != nil {
+		err = fmt.Errorf("error creating bucket %q: %v", p.bucketName, err)
+		glog.Errorf(err.Error())
+		return nil, err
+	}
+
+	// createBucket was successful, deal with user and policy
+	// Bucket does exist, attach new user and policy wrapper
+	// calling initializeCreateOrGrant
+	// TODO: we currently are catching an error that is always nil
+	_ = p.initializeUserAndPolicy()
+
+	// returned ob with connection info
+	return p.rtnObjectBkt(p.bucketName), nil
+}
+
+// Grant attaches to an existing aws s3 bucket and returns a connection info
+// representing the bucket's endpoint and user access credentials.
+func (p awsS3Provisioner) Grant(options *apibkt.BucketOptions) (*v1alpha1.ObjectBucket, error) {
+
+	// initialize and set the AWS services and commonly used variables
+	err := p.initializeCreateOrGrant(options)
+	if err != nil {
+		return nil, err
+	}
+
+	// check and make sure the bucket exists
+	glog.Infof("Checking for existing bucket %q", p.bucketName)
+	//call aws to find bucket
+
+	// Bucket does exist, attach new user and policy wrapper
+	// calling initializeCreateOrGrant
+	// TODO: we currently are catching an error that is always nil
+	_ = p.initializeUserAndPolicy()
+
+	// returned ob with connection info
+	// TODO: assuming this is the same Green vs Brown?
 	return p.rtnObjectBkt(p.bucketName), nil
 }
 
@@ -298,6 +347,7 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	// set receiver fields from OB data
 	p.bucketName = ob.Spec.Endpoint.BucketName
 	p.bktUserPolicyArn = ob.Spec.AdditionalState[obStateARN]
+	p.bktUserName = ob.Spec.AdditionalState[obStateUser]
 	scName := ob.Spec.StorageClassName
 	glog.Infof("Deleting bucket %q for OB %q", p.bucketName, ob.Name)
 
@@ -344,10 +394,45 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	}
 	glog.Infof("Deleted bucket %q from OB %q", p.bucketName, ob.Name)
 
-
-
 	return nil
+}
 
+// Delete the bucket and all its objects.
+// Note: only called when the bucket's reclaim policy is "delete".
+func (p awsS3Provisioner) Revoke(ob *v1alpha1.ObjectBucket) error {
+	//TODO: need to make sure we are deleting correct user
+
+	// set receiver fields from OB data
+	p.bucketName = ob.Spec.Endpoint.BucketName
+	p.bktUserPolicyArn = ob.Spec.AdditionalState[obStateARN]
+	p.bktUserName = ob.Spec.AdditionalState[obStateUser]
+	scName := ob.Spec.StorageClassName
+	glog.Infof("Deleting bucket %q for OB %q", p.bucketName, ob.Name)
+
+	// get the OB and its storage class
+	sc, err := p.getClassByNameForBucket(scName)
+	if err != nil {
+		return fmt.Errorf("failed to get storage class for OB %q: %v", ob.Name, err)
+	}
+
+	// set the aws session and s3 service from the storage class
+	err = p.setSessionAndService(sc)
+	if err != nil {
+		return fmt.Errorf("error using OB %q: %v", ob.Name, err)
+	}
+
+	// Delete IAM Policy and User
+	err = p.handleUserAndPolicyDeletion(p.bucketName)
+	if err != nil {
+		// We are currently only logging
+		// because if failure do not want to stop
+		// deletion of bucket
+		glog.Infof("Failed to delete Policy and/or User - manual clean up required")
+		//return fmt.Errorf("Error deleting Policy and/or User %v", err)
+	}
+
+	// No Deletion of Bucket or Content in Brownfield
+	return nil
 }
 
 // create k8s config and client for the runtime-controller.
