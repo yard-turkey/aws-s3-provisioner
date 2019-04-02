@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	_ "net/url"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
@@ -26,46 +27,18 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// GetClassForVolume locates storage class by persistent volume
-/*
-func (p *awsS3Provisioner) getClassForBucketClaim(obc *v1alpha1.ObjectBucketClaim) (*storageV1.StorageClass, error) {
-
-	if p.clientset == nil {
-		return nil, fmt.Errorf("Cannot get kube client")
-	}
-	className := obc.Spec.StorageClassName
-	if className == "" {
-		// keep trying to find credentials or storageclass?
-		// Yes, w/ exponential backoff
-		return nil, fmt.Errorf("StorageClass missing in OBC %q", obc.Name)
-	}
-
-	class, err := p.clientset.StorageV1().StorageClasses().Get(className, metav1.GetOptions{})
-	// TODO: retry w/ exponential backoff
-	if err != nil {
-		return nil, err
-	}
-	return class, nil
-}
-*/
-
-// GetClassForVolume locates storage class by persistent volume
+// Return the storage class for a given name.
 func (p *awsS3Provisioner) getClassByNameForBucket(className string) (*storageV1.StorageClass, error) {
 
-	if p.clientset == nil {
-		return nil, fmt.Errorf("Cannot get kube client")
-	}
-
 	if className == "" {
-		// keep trying to find credentials or storageclass?
-		// Yes, w/ exponential backoff
-		return nil, fmt.Errorf("StorageClass missing in OB %q", className)
+		//TODO: retry?
+		return nil, fmt.Errorf("cannot Get StorageClass: name is blank")
 	}
 
 	class, err := p.clientset.StorageV1().StorageClasses().Get(className, metav1.GetOptions{})
 	// TODO: retry w/ exponential backoff
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to Get storageclass %q: %v", className, err)
 	}
 	return class, nil
 }
@@ -100,4 +73,22 @@ func (p *awsS3Provisioner) credsFromSecret(c *kubernetes.Clientset, ns, name str
 	p.bktOwnerAccessId = accessKeyId
 	p.bktOwnerSecretKey = secretKey
 	return nil
+}
+
+func randomString(n int) string {
+	var letterRunes = []rune("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
+}
+
+func createUserName(bkt string) string {
+	// prefix is bucket name
+	if len(bkt) > maxBucketLen  {
+		bkt = bkt[:(maxBucketLen-1)]
+	}
+	return fmt.Sprintf("%s-%s", bkt, randomString(genUserLen))
 }
