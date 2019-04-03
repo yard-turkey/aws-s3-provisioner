@@ -19,8 +19,8 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	_ "net/url"
 
+	"github.com/golang/glog"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	storageV1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,11 +30,7 @@ import (
 // Return the storage class for a given name.
 func (p *awsS3Provisioner) getClassByNameForBucket(className string) (*storageV1.StorageClass, error) {
 
-	if className == "" {
-		//TODO: retry?
-		return nil, fmt.Errorf("cannot Get StorageClass: name is blank")
-	}
-
+	glog.V(2).Info("getting storage class %q...", className)
 	class, err := p.clientset.StorageV1().StorageClasses().Get(className, metav1.GetOptions{})
 	// TODO: retry w/ exponential backoff
 	if err != nil {
@@ -43,24 +39,32 @@ func (p *awsS3Provisioner) getClassByNameForBucket(className string) (*storageV1
 	return class, nil
 }
 
+// Return the region name from the passed in storage class.
+func getRegion(sc *storageV1.StorageClass) string {
 
-// Get the secret namespace and name from the passed in map.
-// Empty strings are also returned.
-func getSecretName(parms map[string]string) (string, string) {
+	const scRegionKey = "region"
+	return sc.Parameters[scRegionKey]
+}
+
+// Return the secret namespace and name from the passed storage class.
+func getSecretName(sc *storageV1.StorageClass) (string, string) {
 
 	const (
 		scSecretNameKey = "secretName"
 		scSecretNSKey   = "secretNamespace"
 	)
-	return parms[scSecretNSKey], parms[scSecretNameKey]
+	return sc.Parameters[scSecretNSKey], sc.Parameters[scSecretNameKey]
 }
 
 // Get the secret and set the receiver to the accessKeyId and secretKey.
 func (p *awsS3Provisioner) credsFromSecret(c *kubernetes.Clientset, ns, name string) error {
+
+	nsName := fmt.Sprintf("%s/%s", ns, name)
+	glog.V(2).Info("getting secret %q...", nsName)
 	secret, err := c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
 		// TODO: some kind of exponential backoff and retry...
-		return fmt.Errorf("unable to get Secret \"%s/%s\": %v", ns, name, err)
+		return fmt.Errorf("unable to get Secret %q: %v", nsName, err)
 	}
 
 	accessKeyId := string(secret.Data[v1alpha1.AwsKeyField])
@@ -76,6 +80,7 @@ func (p *awsS3Provisioner) credsFromSecret(c *kubernetes.Clientset, ns, name str
 }
 
 func randomString(n int) string {
+
 	var letterRunes = []rune("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 	b := make([]rune, n)

@@ -86,6 +86,7 @@ func (p *awsS3Provisioner) handleUserAndPolicy(bktName string) (string, string, 
 		return userAccessId, userSecretKey, err
 	}
 
+	glog.V(2).Infof("successfully created user and policy for bucket %q", bktName)
 	return userAccessId, userSecretKey, nil
 }
 
@@ -105,7 +106,7 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion(bktName string) error {
 		glog.Errorf("Error detaching User Policy %s %v", arn, err)
 		return err
 	}
-	glog.Infof("successfully detached policy %s", arn)
+	glog.V(2).Infof("successfully detached policy %q, user %q", arn, uname)
 
 	// Delete Policy
 	_, err = p.iamsvc.DeletePolicy(&awsuser.DeletePolicyInput{PolicyArn: aws.String(arn)})
@@ -115,12 +116,11 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion(bktName string) error {
 		glog.Errorf("Error deleting User Policy %s %v", arn, err)
 		return err
 	}
-	glog.Infof("successfully deleted policy %s", arn)
+	glog.V(2).Infof("successfully deleted policy %q", arn)
 
 	// Delete AccessKeys
 	accessKeyId, err := p.getAccessKey(uname)
 	if len(accessKeyId) != 0 {
-		glog.Infof("access key id is %s", accessKeyId)
 		_, err = p.iamsvc.DeleteAccessKey(&awsuser.DeleteAccessKeyInput{AccessKeyId: aws.String(accessKeyId),UserName: aws.String(uname)})
 		if err != nil {
 			// Not sure we want to stop the deletion of the user or bucket at this point
@@ -128,11 +128,11 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion(bktName string) error {
 			glog.Errorf("Error deleting access key for user %s %v", uname, err)
 			return err
 		}
-		glog.Infof("successfully deleted policy %s", arn)
+		glog.V(2).Infof("successfully deleted access key for user %q", uname)
 	}
 
 	// Delete IAM User
-	glog.Infof("Deleting User %s", uname)
+	glog.V(2).Infof("Deleting User %q", uname)
 	_, err = p.iamsvc.DeleteUser(&awsuser.DeleteUserInput{UserName: aws.String(uname)})
 	if err != nil {
 		// Not sure we want to stop the deletion of the user or bucket at this point
@@ -141,7 +141,7 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion(bktName string) error {
 		return err
 	}
 
-	glog.Infof("successfully deleted policy and user")
+	glog.V(2).Infof("successfully deleted user and policy for bucket %q", bktName)
 	return err
 }
 
@@ -216,69 +216,80 @@ func (p awsS3Provisioner) createUserPolicy(iamsvc *awsuser.IAM, policyName strin
 		return nil, err
 	}
 
-	glog.V(2).Infof("createUserPolicy %s successfully created", policyName)
+	glog.V(2).Infof("createUserPolicy %q successfully created", policyName)
 	return result, nil
 }
 
 func (p *awsS3Provisioner) getPolicyARN(policyName string) (string, error) {
+
+	glog.V(2).Infof("getting ARN for policy %q", policyName)
 	accountID, err := p.getAccountID()
 	if err != nil {
 		return "", err
 	}
-	//set the accountID in our provisioner
+
+	// set the accountID in our provisioner
 	p.bktUserAccountId = accountID
 	policyARN := fmt.Sprintf(policyArn, accountID, policyName)
-	//set the policyARN for our provisioner
+	// set the policyARN for our provisioner
 	p.bktUserPolicyArn = policyARN
-	glog.V(2).Infof("getPolicyARN %s for Account ID %s for Policy %s", policyARN, accountID, policyName)
+	glog.V(2).Infof("successfully got PolicyARN %q for AccountID %s's Policy %q", policyARN, accountID, policyName)
+
 	return policyARN, nil
 }
 
 func (p *awsS3Provisioner) attachPolicyToUser(policyName string) error {
 
+	glog.V(2).Infof("attach policy %q to user", policyName)
 	policyARN, err := p.getPolicyARN(policyName)
 	if err != nil {
 		return err
 	}
 
 	_, err = p.iamsvc.AttachUserPolicy(&awsuser.AttachUserPolicyInput{PolicyArn: aws.String(policyARN), UserName: aws.String(p.bktUserName)})
-	if err == nil {
-		glog.Infof("Successfully attached Policy %s to User %s", policyName, p.bktUserName)
+	if err != nil {
+		return err
 	}
+
+	glog.V(2).Infof("successfully attached policy %q to user %q", policyName, p.bktUserName)
 	return err
 }
 
 // getAccountID - Gets the accountID of the authenticated session.
 func (p *awsS3Provisioner) getAccountID() (string, error) {
 
+	glog.V(2).Infof("creating new user %q", p.bktUserName)
 	user, err := p.iamsvc.GetUser(&awsuser.GetUserInput{
 		UserName: &p.bktUserName})
 	if err != nil {
 		glog.Errorf("Could not get new user %s", p.bktUserName)
 		return "", err
 	}
+
 	arnData, err := arn.Parse(*user.User.Arn)
 	if err != nil {
 		return "", err
 	}
-	glog.V(2).Infof("New User %s and AccountID %s", p.bktUserName, aws.StringValue(&arnData.AccountID))
+
+	glog.V(2).Infof("created user %q and accountID %q", p.bktUserName, aws.StringValue(&arnData.AccountID))
 	return aws.StringValue(&arnData.AccountID), nil
 }
 
 // getAccessKeyId - Gets the accountID of the authenticated session.
 func (p *awsS3Provisioner) getAccessKey(username string) (string, error) {
 
+	glog.V(2).Infof("getting access key for user %q", username)
 	keys, err := p.iamsvc.ListAccessKeys(&awsuser.ListAccessKeysInput{UserName: aws.String(username)})
 	if err != nil {
 		glog.Errorf("Could not get access key for new user %s", username)
 		return "", err
 	}
-	glog.Infof("AccessKeyMeta %+v", keys)
 
 	for _, keys := range keys.AccessKeyMetadata {
 		return aws.StringValue(keys.AccessKeyId), nil
 	}
 
+	glog.V(2).Infof("no access key found for user %q", username)
 	return "", nil
 }
 
@@ -298,7 +309,7 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 	p.iamsvc = awsuser.New(p.session)
 
 	//Create the new user
-	uresult, err := p.iamsvc.CreateUser(&awsuser.CreateUserInput{
+	_, err := p.iamsvc.CreateUser(&awsuser.CreateUserInput{
 		UserName: &myuser,
 	})
 	if err != nil {
@@ -306,10 +317,7 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 		return "", "", err
 	}
 
-	// print out successful result
-	glog.V(2).Infof("Successfully created iam user %v", uresult)
-
-	//Create the Access Keys for the new user
+	// create the Access Keys for the new user
 	aresult, err := p.iamsvc.CreateAccessKey(&awsuser.CreateAccessKeyInput{
 		UserName: &myuser,
 	})
@@ -318,13 +326,11 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 		return "", "", err
 	}
 
-	glog.V(2).Infof("Successfully created Access Keys for user %s: %v", myuser, aresult)
-	// print out successful result for testing
-	// and populate our receiver
+	// populate our receiver
 	p.bktUserAccessId = aws.StringValue(aresult.AccessKey.AccessKeyId)
 	p.bktUserSecretKey = aws.StringValue(aresult.AccessKey.SecretAccessKey)
-	glog.V(2).Infof("Summary of successfully created IAM user %q:\n   accessKey=%s\n   secretAccessKey=%s", myuser, p.bktUserAccessId, p.bktUserSecretKey)
 
+	glog.V(2).Infof("successfully created IAM user %q with access keys", myuser)
 	return p.bktUserAccessId, p.bktUserSecretKey, nil
 }
 
@@ -335,18 +341,14 @@ func (p *awsS3Provisioner) setCreateBucketUserOptions(obc *v1alpha1.ObjectBucket
 	const scBucketUser = "createBucketUser"
 
 	// get sc user-access flag parameter
-	doCreateUser, ok := sc.Parameters[scBucketUser]
-	if !ok {
-		glog.V(2).Infof("setCreateBucketUserOptions - did not find StorageClass flag to create user %s - defaulting to create user", scBucketUser)
-		p.bktCreateUser = "yes"
-		return
-	}
-	if doCreateUser == "no" {
-		glog.V(2).Infof("setCreateBucketUserOptions - did find StorageClass flag to not create user %s", scBucketUser)
+	newUser, ok := sc.Parameters[scBucketUser]
+	if ok && newUser == "no" {
+		glog.V(2).Infof("storage class flag %q indicates to NOT create a new user", scBucketUser)
 		p.bktCreateUser = "no"
 		return
 	}
 
+	glog.V(2).Infof("storage class flag %s's value, or absence of flag, indicates to create a new user", scBucketUser)
 	p.bktCreateUser = "yes"
 	return
 }
