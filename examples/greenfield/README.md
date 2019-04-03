@@ -106,7 +106,6 @@ volumeBindingMode: Immediate
 1. Namespace where the Secret will exist.
 1. reclaimPolicy (Delete or Retain) indicates if the bucket can be deleted when the OBC is deleted.
 
-```
 **NOTE:** There is no *bucketName* parameter in the StorageClass - this indicates that the bucket
 will be dynamically provisioned brand-new.
 
