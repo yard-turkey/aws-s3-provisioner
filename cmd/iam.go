@@ -43,8 +43,7 @@ type StatementEntry struct {
 	Resource []string
 }
 
-// Handle Policy and User Creation when flag is set.
-// Note: new user name is the same as the bucket name.
+// handleUserAndPolicy takes care of policy and user creation when flag is set.
 func (p *awsS3Provisioner) handleUserAndPolicy(bktName string) (string, string, error) {
 
 	glog.V(2).Infof("creating user and policy for bucket %q", bktName)
@@ -61,7 +60,6 @@ func (p *awsS3Provisioner) handleUserAndPolicy(bktName string) (string, string, 
 	//if createBucket was successful
 	//might change the input param into this function, we need bucketName
 	//and maybe accessPerms (read, write, read/write)
-	//policyDoc, err := p.createBucketPolicyDocument(uname)
 	policyDoc, err := p.createBucketPolicyDocument(bktName)
 	if err != nil {
 		//We did get our user created, but not our policy doc
@@ -121,7 +119,7 @@ func (p *awsS3Provisioner) handleUserAndPolicyDeletion(bktName string) error {
 	// Delete AccessKeys
 	accessKeyId, err := p.getAccessKey(uname)
 	if len(accessKeyId) != 0 {
-		_, err = p.iamsvc.DeleteAccessKey(&awsuser.DeleteAccessKeyInput{AccessKeyId: aws.String(accessKeyId),UserName: aws.String(uname)})
+		_, err = p.iamsvc.DeleteAccessKey(&awsuser.DeleteAccessKeyInput{AccessKeyId: aws.String(accessKeyId), UserName: aws.String(uname)})
 		if err != nil {
 			// Not sure we want to stop the deletion of the user or bucket at this point
 			// so just logging an error

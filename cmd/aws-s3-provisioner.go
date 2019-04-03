@@ -61,7 +61,6 @@ const (
 	maxBucketLen     = 58
 	maxUserLen       = 63
 	genUserLen       = 5
-
 )
 
 var (
@@ -126,7 +125,7 @@ func (p *awsS3Provisioner) rtnObjectBkt(bktName string) *v1alpha1.ObjectBucket {
 			},
 		},
 		AdditionalState: map[string]string{
-			obStateARN: p.bktUserPolicyArn,
+			obStateARN:  p.bktUserPolicyArn,
 			obStateUser: p.bktUserName,
 		},
 	}
@@ -228,6 +227,8 @@ func (p *awsS3Provisioner) setSessionAndService(sc *storageV1.StorageClass) erro
 	return nil
 }
 
+// initializeCreateOrGrant sets common provisioner receiver fields and
+// the services and sessions needed to provision.
 func (p *awsS3Provisioner) initializeCreateOrGrant(options *apibkt.BucketOptions) error {
 	glog.V(2).Infof("initializing and setting CreateOrGrant services")
 	// set the bucket name
@@ -254,6 +255,9 @@ func (p *awsS3Provisioner) initializeCreateOrGrant(options *apibkt.BucketOptions
 	return nil
 }
 
+// initializeUserAndPolicy sets commonly used provisioner
+// receiver fields, generates a unique username and calls
+// handleUserandPolicy.
 func (p *awsS3Provisioner) initializeUserAndPolicy() error {
 	// TODO: default access and key are set to bkt owner.
 	//   This needs to be more restrictive or a failure...
@@ -277,6 +281,23 @@ func (p *awsS3Provisioner) initializeUserAndPolicy() error {
 		}
 	}
 	return nil
+}
+
+func (p *awsS3Provisioner) checkIfBucketExists(name string) bool {
+
+	input := &s3.HeadBucketInput{
+		Bucket: aws.String(name),
+	}
+
+	_, err := p.s3svc.HeadBucket(input)
+	if err != nil {
+		if err.(awserr.Error).Code() == s3.ErrCodeNoSuchBucket {
+			return false
+		}
+		return false
+	}
+
+	return true
 }
 
 // Provision creates an aws s3 bucket and returns a connection info
@@ -326,10 +347,12 @@ func (p awsS3Provisioner) Grant(options *apibkt.BucketOptions) (*v1alpha1.Object
 
 	// check and make sure the bucket exists
 	glog.Infof("Checking for existing bucket %q", p.bucketName)
-	//call aws to find bucket
+	if !p.checkIfBucketExists(p.bucketName) {
+		return nil, fmt.Errorf("bucket %s does not exist", p.bucketName)
+	}
 
 	// Bucket does exist, attach new user and policy wrapper
-	// calling initializeCreateOrGrant
+	// calling initializeUserAndPolicy
 	// TODO: we currently are catching an error that is always nil
 	_ = p.initializeUserAndPolicy()
 
@@ -348,7 +371,6 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	p.bktUserName = ob.Spec.AdditionalState[obStateUser]
 	scName := ob.Spec.StorageClassName
 	glog.Infof("Deleting bucket %q for OB %q", p.bucketName, ob.Name)
-
 
 	// get the OB and its storage class
 	sc, err := p.getClassByNameForBucket(scName)
@@ -395,8 +417,7 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 	return nil
 }
 
-// Delete the bucket and all its objects.
-// Note: only called when the bucket's reclaim policy is "delete".
+// Revoke removes a user, policy and access keys from an existing bucket.
 func (p awsS3Provisioner) Revoke(ob *v1alpha1.ObjectBucket) error {
 	//TODO: need to make sure we are deleting correct user
 
