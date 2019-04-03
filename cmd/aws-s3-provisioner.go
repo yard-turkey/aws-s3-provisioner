@@ -173,8 +173,6 @@ func (p *awsS3Provisioner) createBucket(bktName string) error {
 //   the OBC's storage class's region.
 func (p *awsS3Provisioner) awsSessionFromStorageClass(sc *storageV1.StorageClass) error {
 
-	const scRegionKey = "region"
-
 	// helper func var for error returns
 	var errDefault = func() error {
 		var err error
@@ -183,14 +181,14 @@ func (p *awsS3Provisioner) awsSessionFromStorageClass(sc *storageV1.StorageClass
 		return err
 	}
 
-	// get expected sc parameters containing region and secret
-	region, ok := sc.Parameters[scRegionKey]
-	if !ok || region == "" {
+	region := getRegion(sc)
+	if region == "" {
+		glog.Infof("region is empty in storage class %q, default region %q used", sc.Name, defaultRegion)
 		region = defaultRegion
 	}
-	secretNS, secretName := getSecretName(sc.Parameters)
+	secretNS, secretName := getSecretName(sc)
 	if secretNS == "" || secretName == "" {
-		glog.Warningf("secret name or namespace are empty in storage class %q", sc.Name)
+		glog.Infof("secret name or namespace are empty in storage class %q", sc.Name)
 		return errDefault()
 	}
 
@@ -370,7 +368,7 @@ func (p awsS3Provisioner) Delete(ob *v1alpha1.ObjectBucket) error {
 		// We are currently only logging
 		// because if failure do not want to stop
 		// deletion of bucket
-		glog.Infof("Failed to delete Policy and/or User - manual clean up required")
+		glog.Errorf("Failed to delete Policy and/or User - manual clean up required")
 		//return fmt.Errorf("Error deleting Policy and/or User %v", err)
 	}
 
@@ -407,7 +405,7 @@ func (p awsS3Provisioner) Revoke(ob *v1alpha1.ObjectBucket) error {
 	p.bktUserPolicyArn = ob.Spec.AdditionalState[obStateARN]
 	p.bktUserName = ob.Spec.AdditionalState[obStateUser]
 	scName := ob.Spec.StorageClassName
-	glog.Infof("Deleting bucket %q for OB %q", p.bucketName, ob.Name)
+	glog.Infof("Revoking access to bucket %q for OB %q", p.bucketName, ob.Name)
 
 	// get the OB and its storage class
 	sc, err := p.getClassByNameForBucket(scName)
@@ -427,7 +425,7 @@ func (p awsS3Provisioner) Revoke(ob *v1alpha1.ObjectBucket) error {
 		// We are currently only logging
 		// because if failure do not want to stop
 		// deletion of bucket
-		glog.Infof("Failed to delete Policy and/or User - manual clean up required")
+		glog.Errorf("Failed to delete Policy and/or User - manual clean up required")
 		//return fmt.Errorf("Error deleting Policy and/or User %v", err)
 	}
 
