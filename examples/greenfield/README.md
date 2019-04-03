@@ -131,8 +131,8 @@ spec:
 ```
 1. Name of the OBC
 1. Namespace of the OBC
-1. Name prepended to a random string to generate a bucket name. It is ignored if bucketName is defined
-1. the new bucket name which must be unique across all AWS regions otherwise an error occurs when creating the bucket
+1. Name prepended to a random string used to generate a bucket name. It is ignored if bucketName is defined
+1. Name of new bucket which must be unique across all AWS regions, otherwise an error occurs when creating the bucket. If present, this name overrides `generateName`
 1. StorageClass name
 
 **NOTE:** if both `generateBucketName` and `bucketName` are omitted, and the storage class does _not_ define a bucket name, then a new, random bucket name is generated with no prefix.
@@ -145,9 +145,9 @@ objectbucketclaim.objectbucket.io/myobc created
 Let's pause for a moment and digest what just happened.
 After creating the OBC, and assuming the S3 provisioner is running, we now have
 the following Kubernetes resources:
-. a global ObjectBucket (OB) which contains: bucket endpoint info (including region and bucket name), a reference to the OBC, and a reference to the storage class. Unique to S3, the OB also contains the bucket Amazon Resource Name (ARN).Note: there is always a 1:1 relationship between an OBC and an OB.
-. a ConfigMap in the same namespace as the OBC, which contains the same endpoint data found in the OB.
-. a Secret in the same namespace as the OBC, which contains the AWS key-pairs needed to access the bucket.
+.  a global ObjectBucket (OB) which contains: bucket endpoint info (including region and bucket name), a reference to the OBC, and a reference to the storage class. Unique to S3, the OB also contains the bucket Amazon Resource Name (ARN).Note: there is always a 1:1 relationship between an OBC and an OB.
+.  a ConfigMap in the same namespace as the OBC, which contains the same endpoint data found in the OB.
+.  a Secret in the same namespace as the OBC, which contains the AWS key-pairs needed to access the bucket.
 
 And of course, we have a *new* AWS S3 Bucket which you should be able to see via the AWS Console.
 
