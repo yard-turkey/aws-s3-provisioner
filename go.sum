@@ -133,7 +133,6 @@ github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190401205946-5e8a623d825a
 github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190401205946-5e8a623d825a/go.mod h1:VrgW/40jXoKn98OWmofSduzCoZ3PsuzJMwaCOnkwWbM=
 github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190401212740-53f370d6e50c h1:VTekCtlwRMZqY20ePhVrD2J9z51oXJvM8SULL+USAPI=
 github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190401212740-53f370d6e50c/go.mod h1:VrgW/40jXoKn98OWmofSduzCoZ3PsuzJMwaCOnkwWbM=
- test
 github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190402142734-cf64e5558b86 h1:NRGTMNJAXy+4qa+fi9x2znDb8cgee3wYJFfhbCI0SI8=
 github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190402142734-cf64e5558b86/go.mod h1:VrgW/40jXoKn98OWmofSduzCoZ3PsuzJMwaCOnkwWbM=
 go.uber.org/atomic v1.3.2 h1:2Oa65PReHzfn29GpvgsYwloV9AVFHPDk8tYxt2c2tr4=
