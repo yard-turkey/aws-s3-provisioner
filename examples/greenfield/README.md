@@ -95,7 +95,7 @@ parameters:
   region: us-west-1 [3]
   secretName: s3-bucket-owner [4]
   secretNamespace: s3-provisioner [5]
-reclaimPolicy: Delete [7]
+reclaimPolicy: Delete [6]
 volumeBindingMode: Immediate
 
 ```
