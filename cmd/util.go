@@ -30,7 +30,7 @@ import (
 // Return the storage class for a given name.
 func (p *awsS3Provisioner) getClassByNameForBucket(className string) (*storageV1.StorageClass, error) {
 
-	glog.V(2).Info("getting storage class %q...", className)
+	glog.V(2).Infof("getting storage class %q...", className)
 	class, err := p.clientset.StorageV1().StorageClasses().Get(className, metav1.GetOptions{})
 	// TODO: retry w/ exponential backoff
 	if err != nil {
@@ -60,7 +60,7 @@ func getSecretName(sc *storageV1.StorageClass) (string, string) {
 func (p *awsS3Provisioner) credsFromSecret(c *kubernetes.Clientset, ns, name string) error {
 
 	nsName := fmt.Sprintf("%s/%s", ns, name)
-	glog.V(2).Info("getting secret %q...", nsName)
+	glog.V(2).Infof("getting secret %q...", nsName)
 	secret, err := c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
 		// TODO: some kind of exponential backoff and retry...
