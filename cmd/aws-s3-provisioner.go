@@ -92,8 +92,8 @@ type awsS3Provisioner struct {
 
 func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) (*libbkt.Controller, error) {
 
-	//libCfg := &libbkt.Config{}
-	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, "")
+	const all_namespaces = ""
+	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, all_namespaces)
 }
 
 // Return the aws default session.
@@ -489,8 +489,7 @@ func main() {
 	// provisioning lib.
 	S3ProvisionerController, err := NewAwsS3Provisioner(config, s3Prov)
 	if err != nil {
-		//TODO: how do we handle this error?
-		glog.Errorf("killing provisioner, error initializing provisioner controller %v", err)
+		glog.Errorf("killing AWS S3 provisioner, error initializing library controller: %v", err)
 		os.Exit(1)
 	}
 	glog.V(2).Infof("main: running %s provisioner...", provisionerName)
