@@ -43,6 +43,8 @@ github.com/aws/aws-sdk-go/internal/sdkuri
 github.com/beorn7/perks/quantile
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
+# github.com/evanphx/json-patch v4.0.0+incompatible
+github.com/evanphx/json-patch
 # github.com/go-logr/logr v0.1.0
 github.com/go-logr/logr
 # github.com/go-logr/zapr v0.1.1
@@ -109,15 +111,13 @@ github.com/prometheus/procfs/xfs
 github.com/prometheus/procfs/internal/util
 # github.com/spf13/pflag v1.0.3
 github.com/spf13/pflag
-# github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190402142734-cf64e5558b86
+# github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190404212933-8cc532e276ef
 github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors
 github.com/yard-turkey/lib-bucket-provisioner/pkg/apis
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/claim-reconciler
-github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/reconciler-internal
-github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util
 # go.uber.org/atomic v1.3.2
 go.uber.org/atomic
 # go.uber.org/multierr v1.1.0
@@ -301,6 +301,7 @@ k8s.io/client-go/pkg/apis/clientauthentication/v1beta1
 k8s.io/client-go/util/connrotation
 k8s.io/client-go/tools/clientcmd/api/v1
 k8s.io/client-go/dynamic
+k8s.io/client-go/testing
 k8s.io/client-go/restmapper
 k8s.io/client-go/util/workqueue
 k8s.io/client-go/tools/cache
@@ -320,6 +321,7 @@ sigs.k8s.io/controller-runtime/pkg/manager
 sigs.k8s.io/controller-runtime/pkg/predicate
 sigs.k8s.io/controller-runtime/pkg/runtime/signals
 sigs.k8s.io/controller-runtime/pkg/client
+sigs.k8s.io/controller-runtime/pkg/client/fake
 sigs.k8s.io/controller-runtime/pkg/reconcile
 sigs.k8s.io/controller-runtime/pkg/client/apiutil
 sigs.k8s.io/controller-runtime/pkg/client/config
