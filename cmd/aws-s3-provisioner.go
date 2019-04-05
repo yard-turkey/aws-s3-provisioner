@@ -90,10 +90,10 @@ type awsS3Provisioner struct {
 	bktUserPolicyArn  string
 }
 
-func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) *libbkt.ProvisionerController {
+func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) (*libbkt.Controller, error) {
 
-	libCfg := &libbkt.Config{}
-	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, libCfg)
+	//libCfg := &libbkt.Config{}
+	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, "")
 }
 
 // Return the aws default session.
@@ -120,7 +120,7 @@ func (p *awsS3Provisioner) rtnObjectBkt(bktName string) *v1alpha1.ObjectBucket {
 		},
 		Authentication: &v1alpha1.Authentication{
 			AccessKeys: &v1alpha1.AccessKeys{
-				AccessKeyId:     p.bktUserAccessId,
+				AccessKeyID:     p.bktUserAccessId,
 				SecretAccessKey: p.bktUserSecretKey,
 			},
 		},
@@ -487,7 +487,11 @@ func main() {
 	// Create and run the s3 provisioner controller.
 	// It implements the Provisioner interface expected by the bucket
 	// provisioning lib.
-	S3ProvisionerController := NewAwsS3Provisioner(config, s3Prov)
+	S3ProvisionerController, err := NewAwsS3Provisioner(config, s3Prov)
+	if err != nil {
+		//TODO: how do we handle this error?
+		glog.Errorf("error initializing provisioner controller %v", err)
+	}
 	glog.V(2).Infof("main: running %s provisioner...", provisionerName)
 	S3ProvisionerController.Run()
 
