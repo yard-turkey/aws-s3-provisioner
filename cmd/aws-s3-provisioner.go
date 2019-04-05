@@ -490,7 +490,8 @@ func main() {
 	S3ProvisionerController, err := NewAwsS3Provisioner(config, s3Prov)
 	if err != nil {
 		//TODO: how do we handle this error?
-		glog.Errorf("error initializing provisioner controller %v", err)
+		glog.Errorf("killing provisioner, error initializing provisioner controller %v", err)
+		os.Exit(1)
 	}
 	glog.V(2).Infof("main: running %s provisioner...", provisionerName)
 	S3ProvisionerController.Run()
