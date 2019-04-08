@@ -259,6 +259,11 @@ func (p *awsS3Provisioner) initializeCreateOrGrant(options *apibkt.BucketOptions
 // receiver fields, generates a unique username and calls
 // handleUserandPolicy.
 func (p *awsS3Provisioner) initializeUserAndPolicy() error {
+
+	//Create IAM service (maybe this should be added into our default or obc session
+	//or create all services type of function?
+	p.iamsvc = awsuser.New(p.session)
+
 	// TODO: default access and key are set to bkt owner.
 	//   This needs to be more restrictive or a failure...
 	p.bktUserAccessId = p.bktOwnerAccessId
@@ -266,7 +271,7 @@ func (p *awsS3Provisioner) initializeUserAndPolicy() error {
 	if p.bktCreateUser == "yes" {
 		// Create a new IAM user using the name of the bucket and set
 		// access and attach policy for bucket and user
-		p.bktUserName = createUserName(p.bucketName)
+		p.bktUserName = p.createUserName(p.bucketName)
 
 		// handle all iam and policy operations
 		uAccess, uKey, err := p.handleUserAndPolicy(p.bucketName)
@@ -298,6 +303,23 @@ func (p *awsS3Provisioner) checkIfBucketExists(name string) bool {
 	}
 
 	return true
+}
+
+func (p *awsS3Provisioner) checkIfUserExists(name string) bool {
+
+	input := &awsuser.GetUserInput{
+		UserName: aws.String(name),
+	}
+
+	_, err := p.iamsvc.GetUser(input)
+	if err != nil {
+		if err.(awserr.Error).Code() == awsuser.ErrCodeEntityAlreadyExistsException {
+			return true
+		}
+		return false
+	}
+
+	return false
 }
 
 // Provision creates an aws s3 bucket and returns a connection info

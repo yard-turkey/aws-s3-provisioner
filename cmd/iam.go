@@ -302,10 +302,6 @@ func (p *awsS3Provisioner) createIAMUser(user string) (string, string, error) {
 	}
 	glog.V(2).Infof("creating IAM user %q", myuser)
 
-	//Create IAM service (maybe this should be added into our default or obc session
-	//or create all services type of function?
-	p.iamsvc = awsuser.New(p.session)
-
 	//Create the new user
 	_, err := p.iamsvc.CreateUser(&awsuser.CreateUserInput{
 		UserName: &myuser,

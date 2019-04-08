@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
@@ -81,19 +82,30 @@ func (p *awsS3Provisioner) credsFromSecret(c *kubernetes.Clientset, ns, name str
 
 func randomString(n int) string {
 
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var letterRunes = []rune("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 	b := make([]rune, n)
 	for i := range b {
-		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+		b[i] = letterRunes[r.Intn(len(letterRunes))]
 	}
 	return string(b)
 }
 
-func createUserName(bkt string) string {
+func (p *awsS3Provisioner) createUserName(bkt string) string {
 	// prefix is bucket name
 	if len(bkt) > maxBucketLen  {
 		bkt = bkt[:(maxBucketLen-1)]
 	}
-	return fmt.Sprintf("%s-%s", bkt, randomString(genUserLen))
+
+	userbool := true
+	name := ""
+	i := 0
+	for ok := true; ok; ok = userbool {
+		name = fmt.Sprintf("%s-%s", bkt, randomString(genUserLen))
+		userbool = p.checkIfUserExists(name)
+		i++
+	}
+	glog.V(2).Infof("Generated user %s after %v iterations", name, i)
+	return name
 }
