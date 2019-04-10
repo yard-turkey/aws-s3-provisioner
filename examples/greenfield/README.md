@@ -267,17 +267,17 @@ spec:
   - env:
     - name: BUCKET_NAME [1]
       valueFrom:
-            configMapRef:
+            configMapKeyRef:
               name: my-awesome-bucket [2]
               key: BUCKET_NAME [3]
     - name: OBJECT_STORAGE_REGION
       valueFrom:
-            configMapRef:
+            configMapKeyRef:
               name: my-awesome-bucket
               key: BUCKET_REGION
     - name: OBJECT_STORAGE_CLUSTER_PORT
       valueFrom:
-            configMapRef:
+            configMapKeyRef:
               name: my-awesome-bucket
               key: BUCKET_PORT
     - name: BUCKET_ID [4]
