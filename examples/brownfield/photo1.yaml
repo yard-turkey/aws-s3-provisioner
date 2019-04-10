@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: photo1
+  labels:
+    name: photo1
+spec:
+  containers:
+  - env:
+    - name: BUCKET_NAME
+      valueFrom:
+            configMapKeyRef:
+              name: screeley-grant
+              key: BUCKET_NAME
+    - name: OBJECT_STORAGE_REGION
+      valueFrom:
+            configMapKeyRef:
+              name: screeley-grant
+              key: BUCKET_REGION
+    - name: OBJECT_STORAGE_CLUSTER_PORT
+      valueFrom:
+            configMapKeyRef:
+              name: screeley-grant
+              key: BUCKET_PORT
+    - name: BUCKET_ID
+      valueFrom:
+            secretKeyRef:
+              name: screeley-grant
+              key: AWS_ACCESS_KEY_ID
+    - name: BUCKET_PWORD
+      valueFrom:
+            secretKeyRef:
+              name: screeley-grant
+              key: AWS_SECRET_ACCESS_KEY
+    - name: OBJECT_STORAGE_S3_TYPE
+      value: "aws"
+    image: docker.io/zherman/demo:latest
+    imagePullPolicy: Always
+    name: photo1
+    ports:
+    - containerPort: 3000
+      protocol: TCP
