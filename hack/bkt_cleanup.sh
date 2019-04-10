@@ -46,7 +46,8 @@ ob="obc-$ns-$obcName"
 if kubectl get ob $ob; then
    echo
    echo "delete ob $ob..."
-   kubectl delete ob "$ob"
+   kubectl patch --type=merge ob $ob -p '{"metadata":{"finalizers": [null]}}' && \
+   kubectl delete ob $ob
    (( $? != 0 )) && ((errcnt++))
 fi
 
