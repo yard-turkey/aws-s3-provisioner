@@ -307,6 +307,21 @@ Same pattern to get the bucket port and region
 1. Name of the secret (same namespace as the OBC)
 1. Name of the key in the secret containing the AWS user
 
+Lastly, expose the pod as a service so you can access the url from a browser. In this example,
+I exposed as a LoadBalancer
+
+``` 
+  # kubectl expose pod photo1 --type=LoadBalancer --name=photo1
+```
+
+To access via a url use the EXTERNAL-IP
+
+```
+  # kubectl get svc photo1
+  NAME                         TYPE           CLUSTER-IP       EXTERNAL-IP                                                               PORT(S)          AGE
+  photo1                       LoadBalancer   100.66.124.105   a00c53ccb3c5411e9b6550a7c0e50a2a-2010797808.us-east-1.elb.amazonaws.com   3000:32344/TCP   6d
+```
+
 **NOTE:** This is just one example of a Pod that can utilize the bucket information,
 there are several ways that these pod applications can be developed and therefore
 the method of getting the actual values needed from the Secrets and ConfigMaps
