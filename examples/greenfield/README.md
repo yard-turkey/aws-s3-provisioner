@@ -32,7 +32,7 @@ we are documenting the current developer flow.
 ```
 2. Create the ObjectBucket and ObjectBucketClaim [CustomResourceDefinitions](https://github.com/yard-turkey/lib-bucket-provisioner/blob/master/deploy/customResourceDefinitions.yaml).
 
-3. Run the provisioner (after the CRD's are created) passing in *master* and *kubeconfig* parameters.
+3a. Run the provisioner (after the CRD's are created) passing in *master* and *kubeconfig* parameters. (assumes a simple local-up-cluster.sh implemenation)
 ```
  # ./awss3provisioner -master https://localhost:6443 -kubeconfig /var/run/kubernetes/admin.kubeconfig -alsologtostderr -v=2
 
@@ -47,6 +47,14 @@ I0403 10:30:40.923779   16396 reconiler.go:63] objectbucket.io/reconciler/aws-s3
 I0403 10:30:40.923791   16396 manager.go:132] objectbucket.io "level"=0 "msg"="building controller manager"  
 I0403 10:30:40.924741   16396 aws-s3-provisioner.go:472] main: running aws-s3.io/bucket provisioner...
 I0403 10:30:40.924763   16396 manager.go:150] objectbucket.io "level"=0 "msg"="Starting manager"  "provisioner"="aws-s3.io/bucket"
+```
+
+3b. run the provisioner from a proper mulit-node cluster created using KOPS as an example, passing in the *master* and *kubeconfig* parameters.
+```
+ # kops export kubecfg --name=<kops cluster name from output>
+ i.e.
+ # kops export kubecfg --name=screeley-s3prov.screeley.sysdeseng.com
+ #./awss3provisioner -master https://api.screeley-s3prov.screeley.sysdeseng.com -kubeconfig /home/centos/.kube/config -alsologtostderr -v=2
 ```
 
 ### Administrator Creates Secret
