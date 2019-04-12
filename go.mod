@@ -26,7 +26,7 @@ require (
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/prometheus/client_golang v0.9.2 // indirect
 	github.com/spf13/pflag v1.0.3 // indirect
-	github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190411210513-6827c2199ce7
+	github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190412142144-0f359d6d2b29
 	go.uber.org/atomic v1.3.2 // indirect
 	go.uber.org/multierr v1.1.0 // indirect
 	go.uber.org/zap v1.9.1 // indirect
