@@ -92,7 +92,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		log.Info("error getting claim")
 		if errors.IsNotFound(err) {
 			log.Info("looks like the OBC was deleted, proceeding with cleanup")
-			err := r.handleDeleteClaim(request.NamespacedName)
+			err = r.handleDeleteClaim(request.NamespacedName)
 			if err != nil {
 				log.Error(err, "error cleaning up ObjectBucket: %v")
 			}
@@ -135,14 +135,6 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		err       error
 	)
 
-	obc, err = claimForKey(key, r.internalClient)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return fmt.Errorf("OBC was lost before we could provision: %v", err)
-		}
-		return err
-	}
-
 	// If the storage class contains the name of the bucket then we create access
 	// to an existing bucket. If the bucket name does not appear in the storage
 	// class then we dynamically provision a new bucket.
@@ -155,7 +147,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 			log.Error(err, "cleaning up reconcile artifacts")
 			if !pErr.IsBucketExists(err) && ob != nil && isDynamicProvisioning {
 				log.Info("deleting bucket", "name", ob.Spec.Endpoint.BucketName)
-				if err := r.provisioner.Delete(ob); err != nil {
+				if err = r.provisioner.Delete(ob); err != nil {
 					log.Error(err, "error deleting bucket")
 				}
 			}
@@ -191,6 +183,15 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}
 	logD.Info(verb, "bucket", options.BucketName)
 
+	// Re-Get the claim in order to shorten the race condition where the claim was deleted after Reconcile() started
+	obc, err = claimForKey(key, r.internalClient)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return fmt.Errorf("OBC was lost before we could provision: %v", err)
+		}
+		return err
+	}
+
 	if isDynamicProvisioning {
 		ob, err = r.provisioner.Provision(options)
 	} else {
@@ -212,6 +213,9 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return err
 	}
 
+	obc.Spec.ObjectBucketName = ob.Name
+	obc.Spec.BucketName = bucketName
+
 	if secret, err = createSecret(obc, ob.Spec.Authentication, r.Client, r.retryInterval, r.retryTimeout); err != nil {
 		return err
 	}
@@ -220,8 +224,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return err
 	}
 
-	obc.Spec.ObjectBucketName = ob.Name
-	obc.Spec.BucketName = bucketName
+	// Only update the claim if the secret and configMap succeed
 	if err = updateClaim(obc, r.internalClient); err != nil {
 		return err
 	}
@@ -275,7 +278,7 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 	}
 	reclaim := *ob.Spec.ReclaimPolicy
 	// decide whether Delete or Revoke is called
-	if isDynamicallyProvisioned && reclaim == corev1.PersistentVolumeReclaimDelete  {
+	if isDynamicallyProvisioned && reclaim == corev1.PersistentVolumeReclaimDelete {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
