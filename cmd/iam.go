@@ -156,7 +156,7 @@ func (p *awsS3Provisioner) createBucketPolicyDocument(bktName string) (string, e
 			"s3:Get*",
 			"s3:List*",
 		},
-		Resource: []string{arn + "/*"},
+		Resource: []string{arn + "/*", arn},
 	}
 	write := StatementEntry{
 		Sid:    "s3Write",
@@ -165,7 +165,7 @@ func (p *awsS3Provisioner) createBucketPolicyDocument(bktName string) (string, e
 			"s3:DeleteObject",
 			"s3:Put*",
 		},
-		Resource: []string{arn + "/*"},
+		Resource: []string{arn + "/*", arn},
 	}
 
 	policy := PolicyDocument{
