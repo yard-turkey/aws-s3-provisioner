@@ -109,7 +109,7 @@ github.com/prometheus/procfs/xfs
 github.com/prometheus/procfs/internal/util
 # github.com/spf13/pflag v1.0.3
 github.com/spf13/pflag
-# github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190411210513-6827c2199ce7
+# github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190412142144-0f359d6d2b29
 github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api
@@ -316,6 +316,7 @@ sigs.k8s.io/controller-runtime/pkg/builder
 sigs.k8s.io/controller-runtime/pkg/event
 sigs.k8s.io/controller-runtime/pkg/manager
 sigs.k8s.io/controller-runtime/pkg/predicate
+sigs.k8s.io/controller-runtime/pkg/runtime/log
 sigs.k8s.io/controller-runtime/pkg/runtime/signals
 sigs.k8s.io/controller-runtime/pkg/client
 sigs.k8s.io/controller-runtime/pkg/reconcile
@@ -330,7 +331,6 @@ sigs.k8s.io/controller-runtime/pkg/leaderelection
 sigs.k8s.io/controller-runtime/pkg/metrics
 sigs.k8s.io/controller-runtime/pkg/recorder
 sigs.k8s.io/controller-runtime/pkg/runtime/inject
-sigs.k8s.io/controller-runtime/pkg/runtime/log
 sigs.k8s.io/controller-runtime/pkg/webhook/admission
 sigs.k8s.io/controller-runtime/pkg/webhook/admission/types
 sigs.k8s.io/controller-runtime/pkg/internal/controller
