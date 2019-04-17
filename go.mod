@@ -43,7 +43,6 @@ require (
 	k8s.io/client-go v0.0.0-20181213151034-8d9ed539ba31
 	k8s.io/klog v0.2.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20190306001800-15615b16d372 // indirect
-	k8s.io/kubernetes v1.14.0 // indirect
 	sigs.k8s.io/controller-runtime v0.1.10 // indirect
 	sigs.k8s.io/testing_frameworks v0.1.1 // indirect
 	sigs.k8s.io/yaml v1.1.0 // indirect
