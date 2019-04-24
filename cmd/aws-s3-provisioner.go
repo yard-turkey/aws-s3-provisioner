@@ -90,7 +90,7 @@ type awsS3Provisioner struct {
 	bktUserPolicyArn  string
 }
 
-func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) (*libbkt.Controller, error) {
+func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) (*libbkt.Provisioner, error) {
 
 	const all_namespaces = ""
 	return libbkt.NewProvisioner(cfg, provisionerName, s3Provisioner, all_namespaces)
@@ -515,7 +515,7 @@ func main() {
 		os.Exit(1)
 	}
 	glog.V(2).Infof("main: running %s provisioner...", provisionerName)
-	S3ProvisionerController.Run()
+	S3ProvisionerController.Run(stopCh)
 
 	<-stopCh
 	glog.Infof("main: %s provisioner exited.", provisionerName)
@@ -529,26 +529,12 @@ func main() {
 //   the lib because its init() function has already run.
 func handleFlags() {
 
+	flag.StringVar(&kubeconfig, "kubeconfig", os.Getenv("KUBECONFIG"), "Path to a kubeconfig. Only required if out-of-cluster.")
+	flag.StringVar(&masterURL, "master", os.Getenv("MASTER"), "(Deprecated: use `--kubeconfig`) The address of the Kubernetes API server. Overrides kubeconfig. Only required if out-of-cluster.")
+
 	if !flag.Parsed() {
 		flag.Parse()
 	}
-
-	flag.VisitAll(func(f *flag.Flag) {
-		if f.Name == "kubeconfig" {
-			kubeconfig = flag.Lookup(f.Name).Value.String()
-			if kubeconfig == "" {
-				kubeconfig = os.Getenv("KUBECONFIG")
-			}
-			return
-		}
-		if f.Name == "master" {
-			masterURL = flag.Lookup(f.Name).Value.String()
-			if masterURL == "" {
-				masterURL = os.Getenv("MASTER")
-			}
-			return
-		}
-	})
 }
 
 // Shutdown gracefully on system signals.
