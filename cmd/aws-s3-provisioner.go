@@ -521,12 +521,9 @@ func main() {
 	glog.Infof("main: %s provisioner exited.", provisionerName)
 }
 
-// --kubeconfig and --master are set in the controller-runtime's config
-// package's init(). Set global kubeconfig and masterURL variables depending
-// on flag values or env variables.
-// Note: `alsologtostderr` *must* be specified on the command line to see
-//   provisioner and bucket library logging. Setting it here does not affect
-//   the lib because its init() function has already run.
+// Set -kubeconfig and (deprecated) -master flags.
+// Note: when the bucket library used the controller-runtime, -kubeconfig and -master were
+//   set its config package's init() function. Now this is done here.
 func handleFlags() {
 
 	flag.StringVar(&kubeconfig, "kubeconfig", os.Getenv("KUBECONFIG"), "Path to a kubeconfig. Only required if out-of-cluster.")
