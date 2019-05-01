@@ -82,7 +82,7 @@ github.com/modern-go/reflect2
 github.com/peterbourgon/diskv
 # github.com/spf13/pflag v1.0.3
 github.com/spf13/pflag
-# github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190430163314-1a1cc0525a19
+# github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190501165212-9c993b0e80b4
 github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner
 github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api
