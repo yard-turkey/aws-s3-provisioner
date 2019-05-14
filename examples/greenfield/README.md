@@ -272,54 +272,29 @@ metadata:
     name: photo1
 spec:
   containers:
-  - env:
-    - name: BUCKET_NAME [1]
-      valueFrom:
-            configMapKeyRef:
-              name: my-awesome-bucket [2]
-              key: BUCKET_NAME [3]
-    - name: OBJECT_STORAGE_REGION
-      valueFrom:
-            configMapKeyRef:
-              name: my-awesome-bucket
-              key: BUCKET_REGION
-    - name: OBJECT_STORAGE_CLUSTER_PORT
-      valueFrom:
-            configMapKeyRef:
-              name: my-awesome-bucket
-              key: BUCKET_PORT
-    - name: BUCKET_ID [4]
-      valueFrom:
-            secretKeyRef:
-              name: my-awesome-bucket [5]
-              key: AWS_ACCESS_KEY_ID [6]
-    - name: BUCKET_PWORD
-      valueFrom:
-            secretKeyRef:
-              name: my-awesome-bucket
-              key: AWS_SECRET_ACCESS_KEY
-    - name: OBJECT_STORAGE_S3_TYPE
-      value: "aws"
-    image: docker.io/zherman/demo:latest
+  - name: photo1
+    image: docker.io/screeley44/photo-gallery:latest
     imagePullPolicy: Always
-    name: photo1
+    envFrom:
+    - configMapRef:
+        name: my-awesome-bucket <1>
+    - secretRef:
+        name: my-awesome-bucket <2>
     ports:
     - containerPort: 3000
       protocol: TCP
+
 ```
-1. Name of the container's env variable expected to hold the bucket name
-1. Name of the config map (same namespace as the OBC)
-1. Name of the key in the config map containing the bucket name value.
-Same pattern to get the bucket port and region
-1. Name of the container's env variable expected to hold the AWS user id
-1. Name of the secret (same namespace as the OBC)
-1. Name of the key in the secret containing the AWS user
+1. Name of the generated configmap from the provisioning process
+1. Name of the generated secret from the provisioning process
+
+*[Note]* Generated ConfigMap and Secret are same name as the OBC!
 
 Lastly, expose the pod as a service so you can access the url from a browser. In this example,
 I exposed as a LoadBalancer
 
 ``` 
-  # kubectl expose pod photo1 --type=LoadBalancer --name=photo1
+  # kubectl expose pod photo1 --type=LoadBalancer --name=photo1 -n your-namespace
 ```
 
 To access via a url use the EXTERNAL-IP
