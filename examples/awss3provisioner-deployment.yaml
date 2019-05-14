@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aws-s3-provisioner-deployment
+  namespace: s3-prov
+  labels:
+    app: aws-s3-provisioner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aws-s3-provisioner
+  template:
+    metadata:
+      labels:
+        app: aws-s3-provisioner
+    spec:
+      containers:
+      - name: aws-s3-provisioner
+        image: quay.io/screeley44/aws-s3-provisioner:v1.0.0
+        imagePullPolicy: Always
+      restartPolicy: Always
