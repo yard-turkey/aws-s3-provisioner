@@ -179,6 +179,8 @@ github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190501165212-9c993b0e80b4
 github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190501165212-9c993b0e80b4/go.mod h1:VrgW/40jXoKn98OWmofSduzCoZ3PsuzJMwaCOnkwWbM=
 github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190531173033-233ee234f80e h1:eq91GeQF7Q7YdKXb5lxp3fPqRi29+Tm8zAeAIr+9t+U=
 github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190531173033-233ee234f80e/go.mod h1:VrgW/40jXoKn98OWmofSduzCoZ3PsuzJMwaCOnkwWbM=
+github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190531201808-b7ccd3fafaa2 h1:acYbodQx5XVji3GGm0RjrXfq2HkohapNS+6FSDImzbk=
+github.com/yard-turkey/lib-bucket-provisioner v0.0.0-20190531201808-b7ccd3fafaa2/go.mod h1:VrgW/40jXoKn98OWmofSduzCoZ3PsuzJMwaCOnkwWbM=
 go.uber.org/atomic v1.3.2 h1:2Oa65PReHzfn29GpvgsYwloV9AVFHPDk8tYxt2c2tr4=
 go.uber.org/atomic v1.3.2/go.mod h1:gD2HeocX3+yG+ygLZcrzQJaqmWj9AIm7n08wl/qW/PE=
 go.uber.org/multierr v1.1.0 h1:HoEmRHQPVSqub6w2z2d2EOVs2fjyFRGyofhKuyDq0QI=
