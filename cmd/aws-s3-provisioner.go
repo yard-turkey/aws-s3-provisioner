@@ -33,10 +33,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 
 	"github.com/golang/glog"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	libbkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner"
-	apibkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
-	bkterr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	libbkt "github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner"
+	apibkt "github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
+	bkterr "github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api/errors"
 
 	storageV1 "k8s.io/api/storage/v1"
 	"k8s.io/client-go/kubernetes"

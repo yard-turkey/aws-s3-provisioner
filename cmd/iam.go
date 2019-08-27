@@ -25,7 +25,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/arn"
 	awsuser "github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	storageV1 "k8s.io/api/storage/v1"
 )
 
