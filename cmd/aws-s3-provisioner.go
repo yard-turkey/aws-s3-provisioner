@@ -539,7 +539,7 @@ func handleSignals() <-chan struct{} {
 	sigCh := make(chan os.Signal)
 	stopCh := make(chan struct{})
 	go func() {
-		signal.Notify(sigCh)
+		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGKILL)
 		<-sigCh
 		close(stopCh)
 		os.Exit(1)
