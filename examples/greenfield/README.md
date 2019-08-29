@@ -33,7 +33,7 @@ two basic use cases; Administrator and Developer/Application Owner.
   
   i.e.
   
-# kubectl create clusterrolebinding cluster-admin-aws --clusterrole=cluster-admin --user=system:serviceaccount:s3-prov:default
+# kubectl create clusterrolebinding cluster-admin-aws --clusterrole=cluster-admin --user=system:serviceaccount:s3-provisioner:default
 ```
 
 3. Deploy the latest [AWS S3 Provisioner](https://github.com/yard-turkey/aws-s3-provisioner/blob/master/examples/awss3provisioner-deployment.yaml) and create a ClusterRoleBinding.
@@ -43,7 +43,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: aws-s3-provisioner-deployment
-  namespace: s3-prov
+  namespace: s3-provisioner
   labels:
     app: aws-s3-provisioner
 spec:
@@ -173,7 +173,7 @@ metadata:
   name: myobc [1]
   namespace: s3-provisioner [2]
 spec:
-  generateBucketName: mybucket [3]
+  generateBucketName: mybucket-prefix- [3]
   bucketName: my-awesome-bucket [4]
   storageClassName: s3-buckets [5]
 ```

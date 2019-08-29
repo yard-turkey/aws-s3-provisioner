@@ -43,7 +43,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: aws-s3-provisioner-account
-    namespace: s3-prov
+    namespace: s3-provisioner
 roleRef:
   kind: ClusterRole
   name: aws-s3-provisioner-role
@@ -53,7 +53,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: aws-s3-provisioner-deployment
-  namespace: s3-prov
+  namespace: s3-provisioner
   labels:
     app: aws-s3-provisioner
 spec:
