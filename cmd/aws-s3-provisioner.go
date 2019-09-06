@@ -117,7 +117,7 @@ func (p *awsS3Provisioner) rtnObjectBkt(bktName string) *v1alpha1.ObjectBucket {
 			BucketName: bktName,
 			Region:     p.region,
 			AdditionalConfigData: map[string]string{
-				"test": "test",
+				"": "",
 			},
 		},
 		Authentication: &v1alpha1.Authentication{
