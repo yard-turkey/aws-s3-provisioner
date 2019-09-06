@@ -86,7 +86,6 @@ type Endpoint struct {
 	BucketName           string            `json:"bucketName"`
 	Region               string            `json:"region"`
 	SubRegion            string            `json:"subRegion"`
-	SSL                  bool              `json:"ssl"`
 	AdditionalConfigData map[string]string `json:"additionalConfig"`
 }
 
@@ -129,13 +128,18 @@ const (
 // ObjectBucketStatus defines the observed state of ObjectBucket
 type ObjectBucketStatus struct {
 	Phase      ObjectBucketStatusPhase `json:"phase"`
-	Conditions corev1.ConditionStatus  `json:"conditions"`
 }
 
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:openapi-gen=true
+// +kubebuilder:printcolumn:name="StorageClass",type="string",JSONPath=".spec.storageClassName",description="StorageClass"
+// +kubebuilder:printcolumn:name="ClaimNamespace",type="string",JSONPath=".spec.claimRef.namespace",description="ClaimNamespace"
+// +kubebuilder:printcolumn:name="ClaimName",type="string",JSONPath=".spec.claimRef.name",description="ClaimName"
+// +kubebuilder:printcolumn:name="ReclaimPolicy",type="string",JSONPath=".spec.reclaimPolicy",description="ReclaimPolicy"
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="Phase"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // ObjectBucket is the Schema for the objectbuckets API
 type ObjectBucket struct {

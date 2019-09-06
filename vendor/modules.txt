@@ -74,7 +74,7 @@ github.com/imdario/mergo
 github.com/jmespath/go-jmespath
 # github.com/json-iterator/go v1.1.6
 github.com/json-iterator/go
-# github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20190712220128-5b3f4e3b90ed
+# github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20190905204001-6d70203c1a2a
 github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1
 github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner
 github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api
