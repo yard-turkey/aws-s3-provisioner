@@ -116,7 +116,9 @@ func (p *awsS3Provisioner) rtnObjectBkt(bktName string) *v1alpha1.ObjectBucket {
 			BucketPort: httpsPort,
 			BucketName: bktName,
 			Region:     p.region,
-			SSL:        true,
+			AdditionalConfigData: map[string]string{
+				"test": "test",
+			},
 		},
 		Authentication: &v1alpha1.Authentication{
 			AccessKeys: &v1alpha1.AccessKeys{
