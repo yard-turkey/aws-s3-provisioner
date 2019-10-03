@@ -25,3 +25,8 @@ i.e.
  # docker build . -t quay.io/screeley44/aws-s3-provisioner:v1.0.0
  # docker push quay.io/screeley44/aws-s3-provisioner:v1.0.0
 ```
+
+### Using the S3 Provisioner to Test the Library
+
+See [bucket library testing](https://github.com/kube-object-storage/lib-bucket-provisioner/tree/master/hack#library-testing).
+

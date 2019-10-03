@@ -18,7 +18,8 @@ package provisioner
 
 import (
 	"flag"
-
+	"time"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
@@ -29,15 +30,12 @@ import (
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
-// Controller is the first iteration of our internal provisioning
-// Controller.  The passed-in bucket provisioner, coded by the user of the
-// library, is stored for later Provision and Delete calls.
+// Provisioner wraps a custom controller which watches OBCs and manages OB, CMs, and Secrets.
 type Provisioner struct {
 	Name            string
 	Provisioner     api.Provisioner
 	claimController controller
 	informerFactory informers.SharedInformerFactory
-	// TODO context?
 }
 
 func initLoggers() {
@@ -62,7 +60,7 @@ func initFlags() {
 }
 
 // NewProvisioner should be called by importers of this library to
-// instantiate a new provisioning Controller. This Controller will
+// instantiate a new provisioning obcController. This obcController will
 // respond to Add / Update / Delete events by calling the passed-in
 // provisioner's Provisioner and Delete methods.
 // The Provisioner will be restrict to operating only to the namespace given
@@ -79,17 +77,39 @@ func NewProvisioner(
 	libClientset := versioned.NewForConfigOrDie(cfg)
 	clientset := kubernetes.NewForConfigOrDie(cfg)
 
-	informerFactory := informers.NewSharedInformerFactory(libClientset, 0)
+	informerFactory := setupInformerFactory(libClientset, 0, namespace)
 
 	p := &Provisioner{
 		Name:            provisionerName,
 		informerFactory: informerFactory,
-		claimController: NewController(provisionerName, provisioner, clientset, libClientset,
+
+		claimController: NewController(
+			provisionerName,
+			provisioner,
+			clientset,
+			libClientset,
 			informerFactory.Objectbucket().V1alpha1().ObjectBucketClaims(),
 			informerFactory.Objectbucket().V1alpha1().ObjectBuckets()),
 	}
 
 	return p, nil
+}
+
+// SetLabels allows provisioner author to provide their own resource labels.  They will be set on all
+// managed resources by the provisioner (OBC, OB, CM, Secret)
+func (p *Provisioner) SetLabels(labels map[string]string) []string {
+	var errs []string
+	for _, v := range labels {
+		vErrs := validation.IsValidLabelValue(v)
+		if len(errs) > 0 {
+			errs = append(errs, vErrs...)
+		}
+	}
+	if len(errs) > 0 {
+		return errs
+	}
+	p.claimController.SetLabels(labels)
+	return nil
 }
 
 // Run starts the claim and bucket controllers.
@@ -104,4 +124,17 @@ func (p *Provisioner) Run(stopCh <-chan struct{}) (err error) {
 	}()
 	<-stopCh
 	return
+}
+
+// setupInformerFactory generates an informer factory scoped to the given namespace if provided or
+// to the cluster if empty.
+func setupInformerFactory(c versioned.Interface, resyncPeriod time.Duration, ns string) (inf informers.SharedInformerFactory) {
+	if len(ns) > 0 {
+		return informers.NewSharedInformerFactoryWithOptions(
+			c,
+			resyncPeriod,
+			informers.WithNamespace(ns),
+		)
+	}
+	return informers.NewSharedInformerFactory(c, resyncPeriod)
 }
