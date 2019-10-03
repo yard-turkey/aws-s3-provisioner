@@ -18,12 +18,14 @@ package provisioner
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 
@@ -98,19 +100,6 @@ func isNewBucketByObjectBucket(c kubernetes.Interface, ob *v1alpha1.ObjectBucket
 		return false
 	}
 	return len(class.Parameters[v1alpha1.StorageClassBucket]) == 0
-}
-
-func (c *Controller) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket, error) {
-	logD.Info("getting objectBucket for key", "key", key)
-	name, err := objectBucketNameFromClaimKey(key)
-	if err != nil {
-		return nil, err
-	}
-	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("error getting object bucket %q: %v", name, err)
-	}
-	return ob, nil
 }
 
 func configMapForClaimKey(key string, c kubernetes.Interface) (*corev1.ConfigMap, error) {
@@ -223,4 +212,16 @@ func removeFinalizer(obj metav1.Object) {
 			break
 		}
 	}
+}
+
+// replace illegal label value characters with "-".
+// Note: the only substitution is replacing "/" with "-". This needs improvement.
+func labelValue(v string) string {
+	if errs := validation.IsValidLabelValue(v); len(errs) == 0 {
+		return v
+	}
+	if len(v) > validation.LabelValueMaxLength {
+		v = v[0:validation.LabelValueMaxLength]
+	}
+	return strings.Replace(v, "/", "-", -1)
 }

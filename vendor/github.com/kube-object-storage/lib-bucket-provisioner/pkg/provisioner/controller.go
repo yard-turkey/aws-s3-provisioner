@@ -40,10 +40,12 @@ import (
 
 type controller interface {
 	Start(<-chan struct{}) error
+	SetLabels(map[string]string)
 }
 
-// Provisioner is a CRD Controller responsible for executing the Reconcile() function in response to OB and OBC events.
-type Controller struct {
+// Provisioner is a CRD Controller responsible for executing the Reconcile() function
+// in response to OBC events.
+type obcController struct {
 	clientset    kubernetes.Interface
 	libClientset versioned.Interface
 	obcLister    listers.ObjectBucketClaimLister
@@ -52,23 +54,28 @@ type Controller struct {
 	obcHasSynced cache.InformerSynced
 	obHasSynced  cache.InformerSynced
 	queue        workqueue.RateLimitingInterface
-
-	provisioner     api.Provisioner
-	provisionerName string
+	// static label containing provisioner name and provisioner-specific labels which are all added
+	// to the OB, OBC, configmap and secret
+	provisionerLabels map[string]string
+	provisioner       api.Provisioner
+	provisionerName   string
 }
 
-var _ controller = &Controller{}
+var _ controller = &obcController{}
 
-func NewController(provisionerName string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *Controller {
-	ctrl := &Controller{
-		clientset:       clientset,
-		libClientset:    crdClientSet,
-		obcLister:       obcInformer.Lister(),
-		obLister:        obInformer.Lister(),
-		obcInformer:     obcInformer,
-		obcHasSynced:    obcInformer.Informer().HasSynced,
-		obHasSynced:     obInformer.Informer().HasSynced,
-		queue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+func NewController(provisionerName string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *obcController {
+	ctrl := &obcController{
+		clientset:    clientset,
+		libClientset: crdClientSet,
+		obcLister:    obcInformer.Lister(),
+		obLister:     obInformer.Lister(),
+		obcInformer:  obcInformer,
+		obcHasSynced: obcInformer.Informer().HasSynced,
+		obHasSynced:  obInformer.Informer().HasSynced,
+		queue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		provisionerLabels: map[string]string{
+			provisionerLabelKey: labelValue(provisionerName),
+		},
 		provisionerName: provisionerName,
 		provisioner:     provisioner,
 	}
@@ -101,17 +108,7 @@ func NewController(provisionerName string, provisioner api.Provisioner, clientse
 	return ctrl
 }
 
-func (c *Controller) enqueueOBC(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	c.queue.AddRateLimited(key)
-}
-
-func (c *Controller) Start(stopCh <-chan struct{}) error {
+func (c *obcController) Start(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
@@ -124,12 +121,29 @@ func (c *Controller) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (c *Controller) runWorker() {
+// add provisioner-specific labels to the existing static label in the obcController struct.
+func (c *obcController) SetLabels(labels map[string]string) {
+	for k, v := range labels {
+		c.provisionerLabels[k] = v
+	}
+}
+
+func (c *obcController) enqueueOBC(obj interface{}) {
+	var key string
+	var err error
+	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+	c.queue.AddRateLimited(key)
+}
+
+func (c *obcController) runWorker() {
 	for c.processNextItemInQueue() {
 	}
 }
 
-func (c *Controller) processNextItemInQueue() bool {
+func (c *obcController) processNextItemInQueue() bool {
 	obj, shutdown := c.queue.Get()
 	if shutdown {
 		return false
@@ -179,11 +193,11 @@ func (c *Controller) processNextItemInQueue() bool {
 }
 
 // Reconcile implements the Reconciler interface. This function contains the business logic
-// of the OBC Controller.
+// of the OBC obcController.
 // Note: the obc obtained from the key is not expected to be nil. In other words, this func is
-//   not called when informers detect an object is missing and trigger a formal delete event. 
+//   not called when informers detect an object is missing and trigger a formal delete event.
 //   Instead, delete is indicated by the deletionTimestamp being non-nil on an update event.
-func (c *Controller) syncHandler(key string) error {
+func (c *obcController) syncHandler(key string) error {
 
 	setLoggersWithRequest(key)
 	logD.Info("new Reconcile iteration")
@@ -217,6 +231,18 @@ func (c *Controller) syncHandler(key string) error {
 		log.Info("skipping provision")
 		return nil
 	}
+
+	// update the OBC's status to pending before any provisioning related errors can occur
+	obc, err = updateObjectBucketClaimPhase(
+		c.libClientset,
+		obc,
+		v1alpha1.ObjectBucketClaimStatusPhasePending,
+		defaultRetryBaseInterval,
+		defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("error updating OBC status:", err)
+	}
+
 	class, err := storageClassForClaim(c.clientset, obc)
 	if err != nil {
 		return err
@@ -235,22 +261,16 @@ func (c *Controller) syncHandler(key string) error {
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) (err error) {
+func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) (err error) {
 
 	var (
 		ob        *v1alpha1.ObjectBucket
 		secret    *corev1.Secret
 		configMap *corev1.ConfigMap
 	)
-	obcNsName := obc.Namespace + "/" + obc.Name
 
-	// first step is to update the OBC's status to pending
-	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhasePending, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhasePending, err)
-	}
-
-	// set finalizer in OBC so that resources can be cleaned up when the obc is deleted
-	if err = c.protectOBC(obc); err != nil {
+	// set finalizer in OBC so that resources cleaned up is controlled when the obc is deleted
+	if err = c.setOBCMetaFields(obc); err != nil {
 		return err
 	}
 
@@ -319,11 +339,25 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	}
 
 	// create Secret and ConfigMap
-	if secret, err = createSecret(obc, ob.Spec.Authentication, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error creating secret for OBC %q: %v", obcNsName, err)
+	secret, err = createSecret(
+		obc,
+		ob.Spec.Authentication,
+		c.provisionerLabels,
+		c.clientset,
+		defaultRetryBaseInterval,
+		defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("error creating secret for OBC: %v", err)
 	}
-	if configMap, err = createConfigMap(obc, ob.Spec.Endpoint, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error creating configmap for OBC %q: %v", obcNsName, err)
+	configMap, err = createConfigMap(
+		obc,
+		ob.Spec.Endpoint,
+		c.provisionerLabels,
+		c.clientset,
+		defaultRetryBaseInterval,
+		defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("error creating configmap for OBC: %v", err)
 	}
 
 	// Create OB
@@ -334,22 +368,45 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
 	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 	ob.SetFinalizers([]string{finalizer})
+	ob.SetLabels(c.provisionerLabels)
 
-	if ob, err = createObjectBucket(ob, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
+	ob, err = createObjectBucket(
+		ob,
+		c.libClientset,
+		defaultRetryBaseInterval,
+		defaultRetryTimeout)
+	if err != nil {
 		return fmt.Errorf("error creating OB %q: %v", ob.Name, err)
 	}
-	if ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OB %q's status to %q:", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
+	ob, err = updateObjectBucketPhase(
+		c.libClientset,
+		ob,
+		v1alpha1.ObjectBucketStatusPhaseBound,
+		defaultRetryBaseInterval,
+		defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("error updating OB %q's status to %q: %v", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
 	}
 
 	// update OBC
 	obc.Spec.ObjectBucketName = ob.Name
 	obc.Spec.BucketName = bucketName
-	if obc, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OBC %q: %v", obcNsName, err)
+	obc, err = updateClaim(
+		c.libClientset,
+		obc,
+		defaultRetryBaseInterval,
+		defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("error updating OBC: %v", err)
 	}
-	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
+	obc, err = updateObjectBucketClaimPhase(
+		c.libClientset,
+		obc,
+		v1alpha1.ObjectBucketClaimStatusPhaseBound,
+		defaultRetryBaseInterval,
+		defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("error updating OBC %q's status to: %v", v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
 	}
 
 	log.Info("provisioning succeeded")
@@ -358,7 +415,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 
 // Delete or Revoke access to bucket defined by passed-in key and obc.
 // TODO each delete should retry a few times to mitigate intermittent errors
-func (c *Controller) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucketClaim) error {
+func (c *obcController) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucketClaim) error {
 	// Call `Delete` for new (greenfield) buckets with reclaimPolicy == "Delete".
 	// Call `Revoke` for new buckets with reclaimPolicy != "Delete".
 	// Call `Revoke` for existing (brownfield) buckets regardless of reclaimPolicy.
@@ -401,13 +458,13 @@ func (c *Controller) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucketCla
 	return c.deleteResources(ob, cm, secret, obc)
 }
 
-func (c *Controller) supportedProvisioner(provisioner string) bool {
+func (c *obcController) supportedProvisioner(provisioner string) bool {
 	return provisioner == c.provisionerName
 }
 
 // Returns the ob, configmap, and secret based on the passed-in key. Only returns non-nil
 // error if unable to get all resources. Some resources may be nil.
-func (c *Controller) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *corev1.ConfigMap, *corev1.Secret, error) {
+func (c *obcController) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *corev1.ConfigMap, *corev1.Secret, error) {
 
 	ob, obErr := c.objectBucketForClaimKey(key)
 	if errors.IsNotFound(obErr) {
@@ -442,46 +499,58 @@ func (c *Controller) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *c
 // is to remove the finalizer on the OBC so it too will be garbage collected.
 // Returns err if we can't delete one or more of the resources, the final returned error being
 // somewhat arbitrary.
-func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret, obc *v1alpha1.ObjectBucketClaim) (err error) { 
-	name := obc.Namespace + "/" + obc.Name
+func (c *obcController) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret, obc *v1alpha1.ObjectBucketClaim) (err error) {
 
 	if delErr := deleteObjectBucket(ob, c.libClientset); delErr != nil {
 		log.Error(delErr, "error deleting objectBucket", ob.Name)
 		err = delErr
 	}
 	if delErr := releaseSecret(s, c.clientset); delErr != nil {
-		log.Error(delErr, "error releasing secret", name)
+		log.Error(delErr, "error releasing secret")
 		err = delErr
 	}
 	if delErr := releaseConfigMap(cm, c.clientset); delErr != nil {
-		log.Error(delErr, "error releasing configMap", name)
+		log.Error(delErr, "error releasing configMap")
 		err = delErr
 	}
 	if delErr := releaseOBC(obc, c.libClientset); delErr != nil {
-		log.Error(delErr, "error releasing obc", name)
+		log.Error(delErr, "error releasing obc")
 		err = delErr
 	}
-
 	return err
 }
 
-// Add a finalizer to the OBC so that resource deletion can be orchestrated.
-func (c *Controller) protectOBC(obc *v1alpha1.ObjectBucketClaim) (err error) {
-
+// Add finalizer and labels to the OBC.
+func (c *obcController) setOBCMetaFields(obc *v1alpha1.ObjectBucketClaim) (err error) {
 	clib := c.libClientset
-	obcNsName := obc.Namespace + "/" + obc.Name
 
+	logD.Info("getting OBC to set metadata fields")
 	obc, err = clib.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(obc.Name, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("unable to Get obc %q for protection: %v", obcNsName, err)
+		return fmt.Errorf("error getting obc: %v", err)
 	}
 
-	logD.Info("adding obc finalizer")
 	obc.SetFinalizers([]string{finalizer})
-	obc, err = clib.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
+	obc.SetLabels(c.provisionerLabels)
+
+	logD.Info("updating OBC metadata")
+	obc, err = updateClaim(clib, obc, defaultRetryBaseInterval, defaultRetryTimeout)
 	if err != nil {
-		return fmt.Errorf("unable to Update obc %q for protection: %v", obcNsName, err)
+		return fmt.Errorf("error configuring obc metadata: %v", err)
 	}
 
 	return nil
+}
+
+func (c *obcController) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket, error) {
+	logD.Info("getting objectBucket for key", "key", key)
+	name, err := objectBucketNameFromClaimKey(key)
+	if err != nil {
+		return nil, err
+	}
+	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting object bucket %q: %v", name, err)
+	}
+	return ob, nil
 }

@@ -6,5 +6,3 @@ metadata:
 spec:
   generateBucketName: myobc-bucketprefix-
   storageClassName: s3-buckets
-  SSL: true
-  versioned: true

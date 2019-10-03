@@ -52,6 +52,8 @@ github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20190712220128-5b3f
 github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20190712220128-5b3f4e3b90ed/go.mod h1:OQoISh/kcO8xXO98frby5NcA0W4YxvdrWcn0o/mMe5Q=
 github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20190905204001-6d70203c1a2a h1:zsKhs3d/QYPkleAy1fI9SpBEzO0TqWYjUzRlZY+b9ww=
 github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20190905204001-6d70203c1a2a/go.mod h1:OQoISh/kcO8xXO98frby5NcA0W4YxvdrWcn0o/mMe5Q=
+github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20190924175516-f3ba69cc601e h1:C/SWc/jI19xSZbhYoHYdl3rGghslfQ/t0ooIyToEubc=
+github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20190924175516-f3ba69cc601e/go.mod h1:OQoISh/kcO8xXO98frby5NcA0W4YxvdrWcn0o/mMe5Q=
 github.com/matttproud/golang_protobuf_extensions v1.0.1 h1:4hp9jkHxhMHkqkrB3Ix0jegS5sx/RkqARlsWZ6pIwiU=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w8PVh93nsPXa1VrQ6jlwL5oN8l14QlcNfg=
