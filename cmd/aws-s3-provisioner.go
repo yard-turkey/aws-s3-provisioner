@@ -88,6 +88,12 @@ type awsS3Provisioner struct {
 	bktUserSecretKey  string
 	bktUserAccountId  string
 	bktUserPolicyArn  string
+
+	// Bucket Tags
+	bucketTags []*s3.Tag
+
+	// S3 server-side encryption flag
+	isBucketEncryptionRequired bool
 }
 
 func NewAwsS3Provisioner(cfg *restclient.Config, s3Provisioner awsS3Provisioner) (*libbkt.Provisioner, error) {
@@ -168,6 +174,38 @@ func (p *awsS3Provisioner) createBucket(bktName string) error {
 	return nil
 }
 
+func (p *awsS3Provisioner) enableBucketEncryption(bktName string) error {
+
+	defEnc := &s3.ServerSideEncryptionByDefault{SSEAlgorithm: aws.String(s3.ServerSideEncryptionAes256)}
+	rule := &s3.ServerSideEncryptionRule{ApplyServerSideEncryptionByDefault: defEnc}
+	rules := []*s3.ServerSideEncryptionRule{rule}
+	serverConfig := &s3.ServerSideEncryptionConfiguration{Rules: rules}
+	input := &s3.PutBucketEncryptionInput{Bucket: aws.String(bktName), ServerSideEncryptionConfiguration: serverConfig}
+	_, err := p.s3svc.PutBucketEncryption(input)
+	if err != nil {
+		return fmt.Errorf("Server-side encrpytion for bucket %q could not be enabled: %v", bktName, err)
+	}
+	glog.Infof("Bucket %q now has no SSE-S3 encryption by default", bktName)
+	return nil
+}
+
+func (p *awsS3Provisioner) createBucketTags(bktName string, tags []*s3.Tag) error {
+	// Create input for PutBucket method
+	taggingInput := &s3.PutBucketTaggingInput{
+		Bucket: aws.String(bktName),
+		Tagging: &s3.Tagging{
+			TagSet: tags,
+		},
+	}
+
+	_, err := p.s3svc.PutBucketTagging(taggingInput)
+	if err != nil {
+		return fmt.Errorf("Bucket %q could not be created: %v", bktName, err)
+	}
+	glog.Infof("Bucket Tags %s successfully created", tags)
+	return nil
+}
+
 // Create an aws session based on the OBC's storage class's secret and region.
 // Set in the receiver the session and region used to create the session.
 // Note: in error cases it's possible that the set region is different from
@@ -238,12 +276,19 @@ func (p *awsS3Provisioner) initializeCreateOrGrant(options *apibkt.BucketOptions
 
 	// get the OBC and its storage class
 	obc := options.ObjectBucketClaim
+
+	// set the bucket tags from the obc labels
+	p.bucketTags = p.convertLabelsToS3BucketTags(obc.ObjectMeta.Labels)
+
 	scName := options.ObjectBucketClaim.Spec.StorageClassName
 	sc, err := p.getClassByNameForBucket(scName)
 	if err != nil {
 		glog.Errorf("failed to get storage class for OBC \"%s/%s\": %v", obc.Namespace, obc.Name, err)
 		return err
 	}
+
+	// check if server-side encryption for the bucket is required
+	p.isBucketEncryptionRequired = p.bucketEncryptionRequired(sc.ObjectMeta.Annotations)
 
 	// check for bkt user access policy vs. bkt owner policy based on SC
 	p.setCreateBucketUserOptions(obc, sc)
@@ -345,6 +390,26 @@ func (p awsS3Provisioner) Provision(options *apibkt.BucketOptions) (*v1alpha1.Ob
 	err = p.createBucket(p.bucketName)
 	if err != nil {
 		err = fmt.Errorf("error creating bucket %q: %v", p.bucketName, err)
+		glog.Errorf(err.Error())
+		return nil, err
+	}
+
+	if p.isBucketEncryptionRequired {
+		// enable default server-side encrpytion (SSE-S3)
+		glog.Infof("Enabling server-side encrpytion for bucket %q", p.bucketName)
+		err = p.enableBucketEncryption(p.bucketName)
+		if err != nil {
+			err = fmt.Errorf("error enabling server-side encryption for bucket %q: %v", p.bucketName, err)
+			glog.Errorf(err.Error())
+			return nil, err
+		}
+	}
+
+	// create the bucket tags
+	glog.Infof("Creating bucket tags for %q: %v", p.bucketName, p.bucketTags)
+	err = p.createBucketTags(p.bucketName, p.bucketTags)
+	if err != nil {
+		err = fmt.Errorf("error creating bucket tags for %q: %v", p.bucketName, err)
 		glog.Errorf(err.Error())
 		return nil, err
 	}

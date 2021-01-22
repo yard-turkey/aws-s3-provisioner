@@ -19,13 +19,20 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/glog"
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	storageV1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+)
+
+const (
+        annotationEnableS3ServerSideEncryptionKey = "aws-s3-server-side-default-encryption"
 )
 
 // Return the storage class for a given name.
@@ -108,4 +115,27 @@ func (p *awsS3Provisioner) createUserName(bkt string) string {
 	}
 	glog.V(2).Infof("Generated user %s after %v iterations", name, i)
 	return name
+}
+
+func (p *awsS3Provisioner) convertLabelsToS3BucketTags(labels map[string]string) []*s3.Tag {
+	result := make([]*s3.Tag, 0, len(labels))
+	for k, v := range labels {
+		t := &s3.Tag{
+			Key:   aws.String(k),
+			Value: aws.String(v),
+		}
+		result = append(result, t)
+	}
+
+	return result
+}
+
+func (p *awsS3Provisioner) bucketEncryptionRequired(annotations map[string]string) bool {
+
+	if val, ok := annotations[annotationEnableS3ServerSideEncryptionKey]; ok {
+		if strings.EqualFold(val, "true") {
+			return true
+		}
+	}
+	return false
 }
