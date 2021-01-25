@@ -56,7 +56,7 @@ const (
 	s3BucketArn      = "arn:aws:s3:::%s"
 	policyArn        = "arn:aws:iam::%s:policy/%s"
 	createBucketUser = false
-	obStateARN	     = "ARN"
+	obStateARN       = "ARN"
 	obStateUser      = "UserName"
 	maxBucketLen     = 58
 	maxUserLen       = 63
@@ -72,13 +72,13 @@ type awsS3Provisioner struct {
 	bucketName string
 	region     string
 	// session is the aws session
-	session	   *session.Session
+	session *session.Session
 	// s3svc is the aws s3 service based on the session
-	s3svc	   *s3.S3
+	s3svc *s3.S3
 	// iam client service
-	iamsvc	   *awsuser.IAM
+	iamsvc *awsuser.IAM
 	//kube client
-	clientset  *kubernetes.Clientset
+	clientset *kubernetes.Clientset
 	// access keys for aws acct for the bucket *owner*
 	bktOwnerAccessId  string
 	bktOwnerSecretKey string
