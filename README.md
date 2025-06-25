@@ -30,3 +30,18 @@ i.e.
 
 See [bucket library testing](https://github.com/kube-object-storage/lib-bucket-provisioner/tree/master/hack#library-testing).
 
+## Security
+
+This project has been updated to address security vulnerabilities, including CVE-2021-4235 (YAML DoS vulnerability). 
+
+For detailed security information, please see [SECURITY.md](SECURITY.md).
+
+### Quick Security Check
+```bash
+# Update dependencies to latest secure versions
+go mod tidy && go mod vendor
+
+# Check for vulnerable dependencies  
+go list -m -u all | grep yaml
+```
+

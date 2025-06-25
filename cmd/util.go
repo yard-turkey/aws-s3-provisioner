@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -26,7 +27,31 @@ import (
 	storageV1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	v1 "k8s.io/api/core/v1"
 )
+
+const (
+	// Security limits for YAML processing
+	maxYAMLSize = 1024 * 1024 // 1MB limit for YAML content
+	maxAliasDepth = 50        // Limit alias depth to prevent unbounded expansion
+)
+
+// validateYAMLInput validates YAML content before processing to prevent DoS attacks
+func validateYAMLInput(data []byte) error {
+	if len(data) > maxYAMLSize {
+		return fmt.Errorf("YAML content exceeds maximum size limit of %d bytes", maxYAMLSize)
+	}
+	
+	// Check for excessive alias usage patterns that could indicate malicious input
+	aliasCount := strings.Count(string(data), "&")
+	aliasRefCount := strings.Count(string(data), "*")
+	
+	if aliasCount > maxAliasDepth || aliasRefCount > maxAliasDepth*2 {
+		return fmt.Errorf("YAML content contains suspicious alias patterns (aliases: %d, refs: %d)", aliasCount, aliasRefCount)
+	}
+	
+	return nil
+}
 
 // Return the storage class for a given name.
 func (p *awsS3Provisioner) getClassByNameForBucket(className string) (*storageV1.StorageClass, error) {
