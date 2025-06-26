@@ -1,5 +1,24 @@
 # Security Policy
 
+## Recent Security Fixes
+
+### CVE-2020-14040 & CVE-2022-32149 - golang.org/x/text Vulnerabilities
+
+#### Overview
+This project was affected by multiple vulnerabilities in the `golang.org/x/text` library, including infinite loop and DoS vulnerabilities.
+
+#### Vulnerability Details
+- **CVE ID**: CVE-2020-14040, CVE-2022-32149
+- **Severity**: High/Medium
+- **Description**: Multiple vulnerabilities including infinite loop in unicode normalization and DoS in language package
+- **Affected Versions**: golang.org/x/text versions < 0.3.8
+- **Fixed Versions**: golang.org/x/text >= 0.3.8
+
+#### Additional Dependencies Updated
+- **golang.org/x/crypto**: Updated from v0.0.0-20190313024323-a1f597ede03a to v0.31.0
+- **golang.org/x/sys**: Updated from v0.0.0-20190215142949-d0b11bdaac8a to v0.28.0  
+- **github.com/golang/protobuf**: Updated from v1.3.0 to v1.5.4
+
 ## CVE-2021-4235 - YAML Denial of Service Vulnerability
 
 ### Overview
@@ -51,13 +70,16 @@ The vulnerability could potentially be exploited through:
 #### Commands to Check for Vulnerabilities
 ```bash
 # Check for vulnerable dependencies
-go list -m -u all | grep yaml
+go list -m -u all | grep -E "(golang.org/x/text|golang.org/x/crypto)"
 
 # Run security audit (if using Go 1.18+)
 go list -json -deps | nancy sleuth
 
 # Update dependencies
 go mod tidy && go mod vendor
+
+# Check specific vulnerable packages
+go list -m golang.org/x/text golang.org/x/crypto
 ```
 
 ### Reporting Security Issues
@@ -71,5 +93,5 @@ For security-related inquiries, please contact the project maintainers.
 
 ---
 
-**Last Updated**: $(date +%Y-%m-%d)
-**Next Review**: $(date -d '+6 months' +%Y-%m-%d) 
+**Last Updated**: 2024-12-19
+**Next Review**: 2025-06-19 

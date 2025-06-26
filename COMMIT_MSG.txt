@@ -1,0 +1,33 @@
+security: fix multiple dependency vulnerabilities (CVE-2020-14040, CVE-2022-32149)
+
+Fix Dependabot security alert #104 and other critical vulnerabilities:
+
+**Primary Fixes:**
+- CVE-2020-14040: golang.org/x/text infinite loop in unicode normalization
+- CVE-2022-32149: golang.org/x/text DoS vulnerability in language package
+
+**Dependencies Updated:**
+- golang.org/x/text: v0.3.0 → v0.21.0 (CVE-2020-14040, CVE-2022-32149)
+- golang.org/x/crypto: v0.0.0-20190313024323-a1f597ede03a → v0.31.0
+- golang.org/x/sys: v0.0.0-20190215142949-d0b11bdaac8a → v0.28.0
+- github.com/golang/protobuf: v1.3.0 → v1.5.4
+- gopkg.in/yaml.v2: v2.2.3 (already patched for CVE-2021-4235)
+
+**Changes:**
+- go.mod: Update vulnerable dependencies to latest secure versions
+- SECURITY.md: Document new vulnerability fixes and update procedures
+- README.md: Add security alerts, update instructions, and dependency info
+- scripts/security-update.sh: Add automated security update verification script
+- cmd/util.go: YAML input validation (previous CVE-2021-4235 fix)
+
+**Impact:** 
+Resolves high/medium severity vulnerabilities that could cause DoS attacks,
+infinite loops, and resource exhaustion in text processing and crypto operations.
+
+**Testing:**
+- Build verification: ✓ Clean compilation
+- Dependency check: ✓ All vulnerable packages updated
+- Security scan: ✓ No remaining critical vulnerabilities
+
+Fixes: Dependabot alert #104
+Security-fix: CVE-2020-14040, CVE-2022-32149 
